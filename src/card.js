@@ -1,4 +1,4 @@
-// <strip-studio-card> — paint, patterns and hardware effects for an Aqara T1 LED strip via Zigbee2MQTT.
+// <glow-studio-card> — paint, patterns and hardware effects for an Aqara T1 LED strip via Zigbee2MQTT.
 import { esc, hex2rgb, mix, isDark, uid, slugify, segString, detectSegments, detectTopic, scaleColors } from "./helpers.js";
 import { FX_TYPES, SWATCHES, SEG_SETS, defaultLibrary } from "./defaults.js";
 import { fxStripHtml } from "./preview.js";
@@ -8,8 +8,8 @@ const Base = typeof HTMLElement !== "undefined" ? HTMLElement : class {};
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const STEP_MS = 350; // gap between Z2M writes when starting an effect
 
-export class StripStudioCard extends Base {
-  static getConfigElement() { return document.createElement("strip-studio-card-editor"); }
+export class GlowStudioCard extends Base {
+  static getConfigElement() { return document.createElement("glow-studio-card-editor"); }
   static getStubConfig(hass) {
     const light = Object.keys(hass?.states || {}).find((e) => e.startsWith("light.") && /strip|led/i.test(e));
     return { entity: light || "" };
@@ -20,8 +20,8 @@ export class StripStudioCard extends Base {
     if (!entity) throw new Error("Pick the strip's light entity (entity: light.xxx)");
     const slug = slugify(entity);
     this._cfg = {
-      title: "Strip Studio", z2m_base: "zigbee2mqtt",
-      library_topic: `strip_studio/${slug}/library`, library_entity: `sensor.strip_studio_${slug}`,
+      title: "Glow Studio", z2m_base: "zigbee2mqtt",
+      library_topic: `glow_studio/${slug}/library`, library_entity: `sensor.glow_studio_${slug}`,
       ...config, entity,
     };
     this._tab = "paint"; this._sel = new Set(); this._color = "#ff5500"; this._mirror = false;
@@ -65,7 +65,7 @@ export class StripStudioCard extends Base {
   async _setup() {
     const id = this._cfg.library_entity.split(".")[1];
     const disc = {
-      name: `Strip Studio ${this._light?.attributes?.friendly_name || id}`, unique_id: id, object_id: id,
+      name: `Glow Studio ${this._light?.attributes?.friendly_name || id}`, unique_id: id, object_id: id,
       default_entity_id: this._cfg.library_entity, state_topic: this._cfg.library_topic,
       value_template: "{{ value_json.version }}", json_attributes_topic: this._cfg.library_topic, icon: "mdi:palette",
     };
@@ -143,7 +143,7 @@ export class StripStudioCard extends Base {
     if (!lib) {
       this.shadowRoot.innerHTML = `${head}<ha-card><div class="setup"><h3>${esc(this._cfg.title)}</h3>
         <p>First run: create the shared library of patterns and effects for this strip (${this._n} segments).</p>
-        <button class="wide pri" data-act="setup">✨ Set up Strip Studio</button></div></ha-card>`;
+        <button class="wide pri" data-act="setup">✨ Set up Glow Studio</button></div></ha-card>`;
       this.shadowRoot.querySelector("[data-act=setup]").onclick = () => this._setup();
       return;
     }

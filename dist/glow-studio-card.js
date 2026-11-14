@@ -227,9 +227,9 @@ var Base = typeof HTMLElement !== "undefined" ? HTMLElement : class {
 };
 var wait = (ms) => new Promise((r) => setTimeout(r, ms));
 var STEP_MS = 350;
-var StripStudioCard = class extends Base {
+var GlowStudioCard = class extends Base {
   static getConfigElement() {
-    return document.createElement("strip-studio-card-editor");
+    return document.createElement("glow-studio-card-editor");
   }
   static getStubConfig(hass) {
     const light = Object.keys(hass?.states || {}).find((e) => e.startsWith("light.") && /strip|led/i.test(e));
@@ -240,10 +240,10 @@ var StripStudioCard = class extends Base {
     if (!entity) throw new Error("Pick the strip's light entity (entity: light.xxx)");
     const slug = slugify(entity);
     this._cfg = {
-      title: "Strip Studio",
+      title: "Glow Studio",
       z2m_base: "zigbee2mqtt",
-      library_topic: `strip_studio/${slug}/library`,
-      library_entity: `sensor.strip_studio_${slug}`,
+      library_topic: `glow_studio/${slug}/library`,
+      library_entity: `sensor.glow_studio_${slug}`,
       ...config,
       entity
     };
@@ -309,7 +309,7 @@ var StripStudioCard = class extends Base {
   async _setup() {
     const id = this._cfg.library_entity.split(".")[1];
     const disc = {
-      name: `Strip Studio ${this._light?.attributes?.friendly_name || id}`,
+      name: `Glow Studio ${this._light?.attributes?.friendly_name || id}`,
       unique_id: id,
       object_id: id,
       default_entity_id: this._cfg.library_entity,
@@ -414,7 +414,7 @@ var StripStudioCard = class extends Base {
     if (!lib) {
       this.shadowRoot.innerHTML = `${head}<ha-card><div class="setup"><h3>${esc(this._cfg.title)}</h3>
         <p>First run: create the shared library of patterns and effects for this strip (${this._n} segments).</p>
-        <button class="wide pri" data-act="setup">\u2728 Set up Strip Studio</button></div></ha-card>`;
+        <button class="wide pri" data-act="setup">\u2728 Set up Glow Studio</button></div></ha-card>`;
       this.shadowRoot.querySelector("[data-act=setup]").onclick = () => this._setup();
       return;
     }
@@ -783,7 +783,7 @@ var LABELS = {
   z2m_topic: "Zigbee2MQTT set topic (optional, auto-detected)",
   segments: "Segments (optional, auto-detected: 5 per metre)"
 };
-var StripStudioCardEditor = class extends Base2 {
+var GlowStudioCardEditor = class extends Base2 {
   setConfig(config) {
     this._config = config;
     this._render();
@@ -811,15 +811,15 @@ var StripStudioCardEditor = class extends Base2 {
 };
 
 // src/index.js
-var VERSION = "1.0.0";
-if (!customElements.get("strip-studio-card")) customElements.define("strip-studio-card", StripStudioCard);
-if (!customElements.get("strip-studio-card-editor")) customElements.define("strip-studio-card-editor", StripStudioCardEditor);
+var VERSION = "1.1.0";
+if (!customElements.get("glow-studio-card")) customElements.define("glow-studio-card", GlowStudioCard);
+if (!customElements.get("glow-studio-card-editor")) customElements.define("glow-studio-card-editor", GlowStudioCardEditor);
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: "strip-studio-card",
-  name: "Strip Studio",
+  type: "glow-studio-card",
+  name: "Glow Studio",
   description: "Paint segments, save patterns and run hardware effects on an Aqara T1 LED strip (Zigbee2MQTT).",
   preview: false,
-  documentationURL: "https://github.com/danish-din/strip-studio-card"
+  documentationURL: "https://github.com/danish-din/glow-studio-card"
 });
-console.info(`%c STRIP-STUDIO %c ${VERSION} `, "background:#ff6a1a;color:#fff;font-weight:700", "background:#2a1d45;color:#fff");
+console.info(`%c GLOW-STUDIO %c ${VERSION} `, "background:#ff6a1a;color:#fff;font-weight:700", "background:#2a1d45;color:#fff");

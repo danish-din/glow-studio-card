@@ -1,16 +1,16 @@
-# Strip Studio
+# Glow Studio
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
-[![Validate](https://github.com/danish-din/strip-studio-card/actions/workflows/validate.yml/badge.svg)](https://github.com/danish-din/strip-studio-card/actions/workflows/validate.yml)
+[![Validate](https://github.com/danish-din/glow-studio-card/actions/workflows/validate.yml/badge.svg)](https://github.com/danish-din/glow-studio-card/actions/workflows/validate.yml)
 
 A Home Assistant dashboard card for the **Aqara LED Strip T1** that finally uses what the strip can do:
 paint every segment its own colour, save your designs, and run the strip's built-in animated effects
 (woodfire, candlelight, aurora…) with your own colours. Like the Yeelight / Aqara apps, but inside Home Assistant.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/danish-din/strip-studio-card/main/docs/paint.png" width="270" alt="Paint">
-  <img src="https://raw.githubusercontent.com/danish-din/strip-studio-card/main/docs/patterns.png" width="270" alt="Patterns">
-  <img src="https://raw.githubusercontent.com/danish-din/strip-studio-card/main/docs/effects.png" width="270" alt="Effects">
+  <img src="https://raw.githubusercontent.com/danish-din/glow-studio-card/main/docs/paint.png" width="270" alt="Paint">
+  <img src="https://raw.githubusercontent.com/danish-din/glow-studio-card/main/docs/patterns.png" width="270" alt="Patterns">
+  <img src="https://raw.githubusercontent.com/danish-din/glow-studio-card/main/docs/effects.png" width="270" alt="Effects">
 </p>
 
 ## Features
@@ -23,7 +23,7 @@ paint every segment its own colour, save your designs, and run the strip's built
 - **Zero config.** Pick the light; the Zigbee2MQTT topic and the number of segments (5 per metre) are detected automatically.
 - Brightness and power controls built in, visual card editor, follows reduced-motion settings.
 
-<p align="center"><img src="https://raw.githubusercontent.com/danish-din/strip-studio-card/main/docs/editor.png" width="300" alt="Effect editor"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/danish-din/glow-studio-card/main/docs/editor.png" width="300" alt="Effect editor"></p>
 
 ## Requirements
 
@@ -34,39 +34,39 @@ paint every segment its own colour, save your designs, and run the strip's built
 
 ### HACS (recommended)
 
-1. HACS → ⋮ → **Custom repositories** → add `https://github.com/danish-din/strip-studio-card`, type **Dashboard**.
-2. Search for **Strip Studio**, install, and reload your browser.
+1. HACS → ⋮ → **Custom repositories** → add `https://github.com/danish-din/glow-studio-card`, type **Dashboard**.
+2. Search for **Glow Studio**, install, and reload your browser.
 
 ### Manual
 
-1. Download `strip-studio-card.js` from the [latest release](https://github.com/danish-din/strip-studio-card/releases).
+1. Download `glow-studio-card.js` from the [latest release](https://github.com/danish-din/glow-studio-card/releases).
 2. Copy it to `config/www/`.
-3. Settings → Dashboards → ⋮ → **Resources** → add `/local/strip-studio-card.js` as a **JavaScript module**.
+3. Settings → Dashboards → ⋮ → **Resources** → add `/local/glow-studio-card.js` as a **JavaScript module**.
 
 ## Usage
 
-Add the card from the dashboard editor (search "Strip Studio") and pick your strip, or in YAML:
+Add the card from the dashboard editor (search "Glow Studio") and pick your strip, or in YAML:
 
 ```yaml
-type: custom:strip-studio-card
+type: custom:glow-studio-card
 entity: light.bedroom_strip
 ```
 
-The first time, the card shows **✨ Set up Strip Studio**. Tap it to create the shared library with the starter patterns and effects.
+The first time, the card shows **✨ Set up Glow Studio**. Tap it to create the shared library with the starter patterns and effects.
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `entity` | **required** | The strip's light entity. |
-| `title` | `Strip Studio` | Card title. |
+| `title` | `Glow Studio` | Card title. |
 | `z2m_topic` | auto | Zigbee2MQTT set topic, e.g. `zigbee2mqtt/Bedroom Strip/set`. Auto-detected from the device name. Set it if your Home Assistant device name differs from the Zigbee2MQTT friendly name. |
 | `z2m_base` | `zigbee2mqtt` | Base topic, if you changed it in Zigbee2MQTT. |
 | `segments` | auto | Number of segments. Auto-detected from the strip's `length` (5 segments per metre), else 10. |
-| `library_topic` | `strip_studio/<light>/library` | Retained MQTT topic that stores the library. |
-| `library_entity` | `sensor.strip_studio_<light>` | The MQTT sensor that mirrors the library. |
+| `library_topic` | `glow_studio/<light>/library` | Retained MQTT topic that stores the library. |
+| `library_entity` | `sensor.glow_studio_<light>` | The MQTT sensor that mirrors the library. |
 
-### Tip: open Strip Studio instead of the normal light dialog
+### Tip: open Glow Studio instead of the normal light dialog
 
-With [browser_mod](https://github.com/thomasloven/hass-browser_mod) you can make tapping the light open Strip Studio:
+With [browser_mod](https://github.com/thomasloven/hass-browser_mod) you can make tapping the light open Glow Studio:
 
 ```yaml
 type: custom:popup-card
@@ -75,7 +75,7 @@ target:
 popup_card_all_views: true
 title: Bedroom strip
 card:
-  type: custom:strip-studio-card
+  type: custom:glow-studio-card
   entity: light.bedroom_strip
 ```
 
@@ -90,7 +90,7 @@ card:
 ```bash
 npm install
 npm test        # unit + DOM tests (node:test + happy-dom) with coverage
-npm run build   # bundles src/ into dist/strip-studio-card.js
+npm run build   # bundles src/ into dist/glow-studio-card.js
 ```
 
 Open `dev/index.html` through a local web server for a mock Home Assistant to click around in.

@@ -21,17 +21,17 @@ function mount({ lib = defaultLibrary(10), on = true } = {}) {
     devices: { d1: { name: "Bed Strip" } },
     states: {
       "light.strip": { state: on ? "on" : "off", attributes: { brightness: 128, friendly_name: "Bed strip" } },
-      ...(lib ? { "sensor.strip_studio_strip": { state: "1", attributes: lib } } : {}),
+      ...(lib ? { "sensor.glow_studio_strip": { state: "1", attributes: lib } } : {}),
     },
     callService: async (domain, service, data) => {
       calls.push({ domain, service, data });
-      if (data?.topic === "strip_studio/strip/library") {
-        hass.states = { ...hass.states, "sensor.strip_studio_strip": { state: "x", attributes: JSON.parse(data.payload) } };
+      if (data?.topic === "glow_studio/strip/library") {
+        hass.states = { ...hass.states, "sensor.glow_studio_strip": { state: "x", attributes: JSON.parse(data.payload) } };
         el.hass = { ...hass };
       }
     },
   };
-  const el = document.createElement("strip-studio-card");
+  const el = document.createElement("glow-studio-card");
   el.setConfig({ entity: "light.strip" });
   document.body.appendChild(el);
   el.hass = hass;
@@ -41,9 +41,9 @@ function mount({ lib = defaultLibrary(10), on = true } = {}) {
 }
 
 test("registers the card and its editor", () => {
-  assert.ok(customElements.get("strip-studio-card"));
-  assert.ok(customElements.get("strip-studio-card-editor"));
-  assert.ok(window.customCards.some((c) => c.type === "strip-studio-card"));
+  assert.ok(customElements.get("glow-studio-card"));
+  assert.ok(customElements.get("glow-studio-card-editor"));
+  assert.ok(window.customCards.some((c) => c.type === "glow-studio-card"));
 });
 
 test("first run shows setup and creates the library", async () => {
@@ -51,12 +51,12 @@ test("first run shows setup and creates the library", async () => {
   assert.ok($(".setup"));
   $("[data-act=setup]").click();
   await tick(1700);
-  assert.ok(calls.some((c) => c.data.topic.startsWith("homeassistant/sensor/strip_studio_strip")));
-  assert.ok(calls.some((c) => c.data.topic === "strip_studio/strip/library"));
+  assert.ok(calls.some((c) => c.data.topic.startsWith("homeassistant/sensor/glow_studio_strip")));
+  assert.ok(calls.some((c) => c.data.topic === "glow_studio/strip/library"));
 });
 
 test("missing entity shows a clear message", () => {
-  const el = document.createElement("strip-studio-card");
+  const el = document.createElement("glow-studio-card");
   el.setConfig({ entity: "light.nope" });
   el.hass = { states: {}, entities: {}, devices: {}, callService: async () => {} };
   assert.match(el.shadowRoot.textContent, /not found/);
@@ -196,7 +196,7 @@ test("XSS: a hostile pattern name is rendered as text", () => {
 });
 
 test("editor emits config-changed without empty keys", () => {
-  const ed = document.createElement("strip-studio-card-editor");
+  const ed = document.createElement("glow-studio-card-editor");
   ed.setConfig({ entity: "light.strip" });
   ed.hass = { states: {} };
   let got;

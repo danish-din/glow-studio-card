@@ -1,12 +1,12 @@
 {
-  "name": "strip-studio-card",
-  "version": "1.0.0",
+  "name": "glow-studio-card",
+  "version": "1.1.0",
   "description": "Home Assistant Lovelace card: paint segments, save patterns and run hardware effects on an Aqara T1 LED strip via Zigbee2MQTT.",
   "type": "module",
   "private": true,
   "license": "MIT",
   "scripts": {
-    "build": "esbuild src/index.js --bundle --format=esm --target=es2020 --outfile=dist/strip-studio-card.js --legal-comments=none",
+    "build": "esbuild src/index.js --bundle --format=esm --target=es2020 --outfile=dist/glow-studio-card.js --legal-comments=none",
     "test": "node --test --experimental-test-coverage --test-concurrency=1 test/helpers.test.mjs test/library.test.mjs test/card.test.mjs test/render.test.mjs"
   },
   "devDependencies": {

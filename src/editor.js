@@ -14,7 +14,7 @@ const LABELS = {
   segments: "Segments (optional, auto-detected: 5 per metre)",
 };
 
-export class StripStudioCardEditor extends Base {
+export class GlowStudioCardEditor extends Base {
   setConfig(config) { this._config = config; this._render(); }
   set hass(hass) { this._hass = hass; this._render(); }
 

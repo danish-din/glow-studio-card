@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { StripStudioCard } from "../src/card.js";
+import { GlowStudioCard } from "../src/card.js";
 import { defaultLibrary } from "../src/defaults.js";
 
 const mkHass = (lib) => {
@@ -11,14 +11,14 @@ const mkHass = (lib) => {
     devices: { d1: { name: "Bed Strip" } },
     states: {
       "light.strip": { state: "on", attributes: { brightness: 200, friendly_name: "Bed strip" } },
-      ...(lib ? { "sensor.strip_studio_strip": { state: "1", attributes: lib } } : {}),
+      ...(lib ? { "sensor.glow_studio_strip": { state: "1", attributes: lib } } : {}),
     },
     callService: async (domain, service, data) => { calls.push({ domain, service, data }); },
   };
   return hass;
 };
 const card = (hass, cfg = { entity: "light.strip" }) => {
-  const c = new StripStudioCard();
+  const c = new GlowStudioCard();
   c.setConfig(cfg);
   c._hass = hass; // bypass render (no DOM in tests)
   return c;
@@ -26,11 +26,11 @@ const card = (hass, cfg = { entity: "light.strip" }) => {
 const z2m = (calls) => calls.filter((c) => c.data.topic === "zigbee2mqtt/Bed Strip/set").map((c) => JSON.parse(c.data.payload));
 
 test("setConfig requires an entity and accepts legacy 'light'", () => {
-  assert.throws(() => new StripStudioCard().setConfig({}), /entity/);
-  const c = new StripStudioCard(); c.setConfig({ light: "light.strip" });
+  assert.throws(() => new GlowStudioCard().setConfig({}), /entity/);
+  const c = new GlowStudioCard(); c.setConfig({ light: "light.strip" });
   assert.equal(c._cfg.entity, "light.strip");
-  assert.equal(c._cfg.library_entity, "sensor.strip_studio_strip");
-  assert.equal(c._cfg.library_topic, "strip_studio/strip/library");
+  assert.equal(c._cfg.library_entity, "sensor.glow_studio_strip");
+  assert.equal(c._cfg.library_topic, "glow_studio/strip/library");
 });
 
 test("explicit config overrides auto-detection", () => {
@@ -50,9 +50,9 @@ test("library is null until set up; setup publishes discovery then library", asy
   const c = card(h);
   assert.equal(c._lib(), null);
   await c._setup();
-  assert.equal(h.calls[0].data.topic, "homeassistant/sensor/strip_studio_strip/library/config");
+  assert.equal(h.calls[0].data.topic, "homeassistant/sensor/glow_studio_strip/library/config");
   const disc = JSON.parse(h.calls[0].data.payload);
-  assert.equal(disc.json_attributes_topic, "strip_studio/strip/library");
+  assert.equal(disc.json_attributes_topic, "glow_studio/strip/library");
   assert.equal(h.calls[0].data.retain, true);
   const lib = JSON.parse(h.calls[1].data.payload);
   assert.equal(lib.patterns[0].colors.length, 10);
