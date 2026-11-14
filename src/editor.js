@@ -12,6 +12,7 @@ const LABELS = {
   wled_topic: "WLED MQTT device topic (e.g. wled/bedroom)",
   leds: "Total LEDs (optional, auto-detected)",
   segment_entities: "Segment lights, in order along the strip",
+  stop_scripts: "Scripts to stop when you pick something here (e.g. a sunrise/sunset)",
 };
 
 /** Schema for a config; exported for tests. */
@@ -27,6 +28,7 @@ export function editorSchema(config, hass) {
   if (id === "wled") schema.push({ name: "wled_topic", selector: { text: {} } }, { name: "leds", selector: { number: { min: 1, max: 2000, mode: "box" } } });
   if (id === "segment_lights" || !id) schema.push({ name: "segment_entities", selector: { entity: { domain: "light", multiple: true } } });
   if (id !== "segment_lights") schema.push({ name: "segments", selector: { number: { min: 1, max: 100, mode: "box" } } });
+  schema.push({ name: "stop_scripts", selector: { entity: { domain: "script", multiple: true } } });
   return schema;
 }
 

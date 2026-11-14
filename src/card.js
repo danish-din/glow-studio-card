@@ -118,6 +118,7 @@ export class GlowStudioCard extends Base {
     return this._guard(async () => {
       if (isDrift(fx.type)) {
         if (!this._hass.states[this._cfg.drift_script]) throw new Error("Slow effects need the Glow Studio drift script. Import it from the README (one click).");
+        await this._stopScripts();
         await this._hass.callService("script", "turn_on", { entity_id: this._cfg.drift_script, variables: driftVariables(this._driver, this._ctx, fx, this._n) });
       } else {
         await this._stopDrift();
@@ -126,7 +127,13 @@ export class GlowStudioCard extends Base {
       if (remember) { const lib = this._lib(); lib.active = { kind: "effect", id: fx.id, name: fx.name }; await this._saveLib(lib); }
     });
   }
+  /** Stop other things driving this strip (e.g. a sunrise/sunset script) so the newest choice wins. */
+  async _stopScripts() {
+    const running = [].concat(this._cfg.stop_scripts || []).filter((e) => this._hass.states[e]?.state === "on");
+    if (running.length) await this._hass.callService("script", "turn_off", { entity_id: running });
+  }
   async _stopDrift() {
+    await this._stopScripts();
     if (this._hass.states[this._cfg.drift_script]?.state === "on") {
       await this._hass.callService("script", "turn_off", { entity_id: this._cfg.drift_script });
     }

@@ -750,6 +750,7 @@ var GlowStudioCard = class extends Base {
     return this._guard(async () => {
       if (isDrift(fx.type)) {
         if (!this._hass.states[this._cfg.drift_script]) throw new Error("Slow effects need the Glow Studio drift script. Import it from the README (one click).");
+        await this._stopScripts();
         await this._hass.callService("script", "turn_on", { entity_id: this._cfg.drift_script, variables: driftVariables(this._driver, this._ctx, fx, this._n) });
       } else {
         await this._stopDrift();
@@ -762,7 +763,13 @@ var GlowStudioCard = class extends Base {
       }
     });
   }
+  /** Stop other things driving this strip (e.g. a sunrise/sunset script) so the newest choice wins. */
+  async _stopScripts() {
+    const running = [].concat(this._cfg.stop_scripts || []).filter((e) => this._hass.states[e]?.state === "on");
+    if (running.length) await this._hass.callService("script", "turn_off", { entity_id: running });
+  }
   async _stopDrift() {
+    await this._stopScripts();
     if (this._hass.states[this._cfg.drift_script]?.state === "on") {
       await this._hass.callService("script", "turn_off", { entity_id: this._cfg.drift_script });
     }
@@ -1163,7 +1170,8 @@ var LABELS = {
   segments: "Segments (optional, auto-detected where possible)",
   wled_topic: "WLED MQTT device topic (e.g. wled/bedroom)",
   leds: "Total LEDs (optional, auto-detected)",
-  segment_entities: "Segment lights, in order along the strip"
+  segment_entities: "Segment lights, in order along the strip",
+  stop_scripts: "Scripts to stop when you pick something here (e.g. a sunrise/sunset)"
 };
 function editorSchema(config, hass) {
   const driver = pickDriver(hass || {}, { ...config, entity: config.entity || config.light });
@@ -1177,6 +1185,7 @@ function editorSchema(config, hass) {
   if (id === "wled") schema.push({ name: "wled_topic", selector: { text: {} } }, { name: "leds", selector: { number: { min: 1, max: 2e3, mode: "box" } } });
   if (id === "segment_lights" || !id) schema.push({ name: "segment_entities", selector: { entity: { domain: "light", multiple: true } } });
   if (id !== "segment_lights") schema.push({ name: "segments", selector: { number: { min: 1, max: 100, mode: "box" } } });
+  schema.push({ name: "stop_scripts", selector: { entity: { domain: "script", multiple: true } } });
   return schema;
 }
 var GlowStudioCardEditor = class extends Base2 {

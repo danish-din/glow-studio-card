@@ -203,3 +203,18 @@ test("saving the running effect applies it to the strip straight away", async ()
   await c._saveEffect();
   assert.equal(calls.find((x) => x.domain === "script" && x.service === "turn_on").data.variables.minutes, 90);
 });
+
+test("stop_scripts: painting or starting an effect stops e.g. a running sunset first", async () => {
+  const { c, calls } = mkCard({ scriptState: "off" });
+  c._cfg.stop_scripts = ["script.bed_sunset", "script.bed_sunrise"];
+  c._hass.states["script.bed_sunset"] = { state: "on", attributes: {} };
+  c._hass.states["script.bed_sunrise"] = { state: "off", attributes: {} };
+  await c._runEffect(c._lib().effects.find((e) => e.id === "d0"));
+  const stop = calls.find((x) => x.domain === "script" && x.service === "turn_off");
+  assert.deepEqual(stop.data.entity_id, ["script.bed_sunset"], "only running scripts are stopped");
+  assert.ok(calls.indexOf(stop) < calls.findIndex((x) => x.service === "turn_on" && x.domain === "script"));
+  calls.length = 0;
+  c._sendPaint(Array(10).fill("#00ff00"), 0);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(calls[0].service, "turn_off");
+});
