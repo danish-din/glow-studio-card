@@ -4,8 +4,9 @@ import { esc, mix, isDark, uid, slugify, scaleColors } from "./helpers.js";
 import { defaultLibrary } from "./defaults.js";
 import { fxStripHtml } from "./preview.js";
 import { STYLES } from "./styles.js";
-import { pickDriver, styleInfo } from "./drivers/index.js";
-import { paintTab, patternsTab, effectsTab } from "./views.js";
+import { pickDriver, styleInfo, allStyles } from "./drivers/index.js";
+import { DRIFT_SCRIPT, DRIFT_DEFAULTS, MINUTE_CHOICES, isDrift, driftVariables } from "./drift.js";
+import { paintTab, patternsTab, effectsTab, speedBar } from "./views.js";
 
 const Base = typeof HTMLElement !== "undefined" ? HTMLElement : class {};
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -22,7 +23,7 @@ export class GlowStudioCard extends Base {
     if (!entity) throw new Error("Pick the strip's light entity (entity: light.xxx)");
     const slug = slugify(entity);
     this._cfg = {
-      title: "Glow Studio", z2m_base: "zigbee2mqtt",
+      title: "Glow Studio", z2m_base: "zigbee2mqtt", drift_script: DRIFT_SCRIPT,
       library_topic: `glow_studio/${slug}/library`, library_entity: `sensor.glow_studio_${slug}`,
       ...config, entity,
     };
@@ -81,6 +82,8 @@ export class GlowStudioCard extends Base {
     await this._hass.callService("mqtt", "publish", { topic: `homeassistant/sensor/${id}/library/config`, payload: JSON.stringify(disc), retain: true });
     await wait(1500);
     const lib = defaultLibrary(this._n, this._driver.defaultEffects(this._ctx));
+    DRIFT_DEFAULTS.forEach(([name, type, colors, minutes], i) =>
+      lib.effects.push({ id: `d${i}`, name, type, colors, minutes, speed: 50, segments: "all" }));
     await this._hass.callService("mqtt", "publish", { topic: this._cfg.library_topic, payload: JSON.stringify(lib), retain: true });
   }
 
@@ -91,6 +94,7 @@ export class GlowStudioCard extends Base {
   _sendPaint(colors, delay = 220) {
     clearTimeout(this._sendT);
     this._sendT = setTimeout(() => this._guard(async () => {
+      await this._stopDrift();
       await this._driver.paint(this._ctx, colors);
       const lib = this._lib(); if (!lib) return;
       const fromPattern = lib.active?.kind === "pattern" && lib.patterns.some((p) => p.id === lib.active.id && JSON.stringify(p.colors) === JSON.stringify(colors));
@@ -109,10 +113,33 @@ export class GlowStudioCard extends Base {
     this._sendPaint(this._paint, 0);
     this._render();
   }
+  /** Slow effects run in Home Assistant (drift script); hardware effects on the strip itself. */
   _runEffect(fx, remember = true) {
     return this._guard(async () => {
-      await this._driver.run(this._ctx, fx);
+      if (isDrift(fx.type)) {
+        if (!this._hass.states[this._cfg.drift_script]) throw new Error("Slow effects need the Glow Studio drift script. Import it from the README (one click).");
+        await this._hass.callService("script", "turn_on", { entity_id: this._cfg.drift_script, variables: driftVariables(this._driver, this._ctx, fx, this._n) });
+      } else {
+        await this._stopDrift();
+        await this._driver.run(this._ctx, fx);
+      }
       if (remember) { const lib = this._lib(); lib.active = { kind: "effect", id: fx.id, name: fx.name }; await this._saveLib(lib); }
+    });
+  }
+  async _stopDrift() {
+    if (this._hass.states[this._cfg.drift_script]?.state === "on") {
+      await this._hass.callService("script", "turn_off", { entity_id: this._cfg.drift_script });
+    }
+  }
+  /** Quick speed change for the running effect (hardware speed, or cycle minutes for slow effects). */
+  async _changeSpeed(patch) {
+    const lib = this._lib();
+    const fx = lib.effects.find((e) => e.id === lib.active?.id); if (!fx) return;
+    Object.assign(fx, patch);
+    await this._guard(async () => {
+      if (isDrift(fx.type)) await this._runEffect(fx, false);
+      else await this._driver.setSpeed(this._ctx, fx);
+      await this._saveLib(lib);
     });
   }
   async _stop() {
@@ -171,6 +198,7 @@ export class GlowStudioCard extends Base {
       </header>
       ${problem ? `<p class="warn">${esc(problem)}</p>` : ""}
       ${strip}
+      ${fxActive && on ? speedBar(fxActive, styleInfo(this._driver, ctx, fxActive.type), MINUTE_CHOICES) : ""}
       <label class="bri"><span>☀</span><input type="range" min="1" max="100" value="${on ? bri : 0}" data-act="bri"><b>${on ? bri + "%" : "off"}</b></label>
       <nav>${Object.entries(tabs).map(([t, l]) => `<button class="${s.tab === t ? "act" : ""}" data-tab="${t}">${l}</button>`).join("")}</nav>
       <section>${body}</section></ha-card>`;
@@ -198,6 +226,12 @@ export class GlowStudioCard extends Base {
     q("[data-ed-seg]").forEach((b) => (b.onclick = () => { s.editing.segments = b.dataset.edSeg; s.editing.selected = [...s.sel]; this._render(); }));
     q("[data-ed-rm]").forEach((b) => (b.onclick = () => { s.editing.colors.splice(Number(b.dataset.edRm), 1); this._render(); }));
     q("[data-ed-add]").forEach((b) => (b.onclick = () => this._addColour(b.dataset.edAdd)));
+    q("[data-ed-min]").forEach((b) => (b.onclick = () => { s.editing.minutes = Number(b.dataset.edMin); this._render(); }));
+    q("[data-fx-min]").forEach((b) => (b.onclick = () => this._changeSpeed({ minutes: Number(b.dataset.fxMin) })));
+    q("[data-fx-speed]").forEach((el) => {
+      el.oninput = () => { const l = R.querySelector("[data-fx-speed-label]"); if (l) l.textContent = `${el.value}%`; };
+      el.onchange = () => this._changeSpeed({ speed: Number(el.value) });
+    });
     this._wireStrip();
     const ni = R.querySelector('[data-act="name-input"]');
     if (ni) { ni.focus(); ni.onkeydown = (e) => { if (e.key === "Enter") this._onAct("name-save"); }; }
@@ -247,7 +281,7 @@ export class GlowStudioCard extends Base {
 
   async _onAct(act) {
     const n = this._n, s = this._s;
-    const first = () => this._driver.styles(this._ctx)[0];
+    const first = () => allStyles(this._driver, this._ctx)[0];
     const actions = {
       power: () => this._hass.callService("light", "toggle", { entity_id: this._cfg.entity }),
       stop: () => this._stop(),
@@ -262,7 +296,7 @@ export class GlowStudioCard extends Base {
       "new-effect": () => {
         const type = first()?.id; if (!type) return;
         const max = styleInfo(this._driver, this._ctx, type).colors;
-        s.editing = { id: null, name: "My effect", type, colors: ["#ff3a00", "#ff9500"].slice(0, max), speed: 50, segments: "all" };
+        s.editing = { id: null, name: "My effect", type, colors: ["#ff3a00", "#ff9500"].slice(0, max), speed: 50, minutes: 30, segments: "all" };
         this._render();
       },
       "ed-cancel": () => { s.editing = null; this._render(); },

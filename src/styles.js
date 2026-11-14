@@ -55,4 +55,5 @@ nav button.act{background:rgba(255,255,255,.1);color:var(--ss-text);box-shadow:i
 @media (prefers-reduced-motion:reduce){.strip i{animation:none!important}}
 .setup{text-align:center;padding:10px 4px;position:relative;z-index:1}.setup p{color:var(--ss-mute);margin:6px 0 14px}
 .warn{color:#ffb347;font-size:.85em;margin:8px 2px}
+.speedbar{margin:10px 2px 0}.row.speedbar{align-items:center;gap:6px}.row.speedbar .hint{margin:0 4px 0 0}
 `;

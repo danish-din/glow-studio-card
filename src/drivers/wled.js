@@ -62,6 +62,10 @@ export const wled = {
     }
     await ctx.call("light", "turn_on", { entity_id: ctx.entity, effect: fx.type });
   },
+  setSpeed: async (ctx, fx) => {
+    const t = apiTopic(ctx);
+    if (t) await ctx.mqtt(t, { seg: [{ id: 0, sx: Math.round(((Number(fx.speed) || 50) / 100) * 255) }] });
+  },
   defaultEffects: (ctx) => {
     const have = new Set(effectList(ctx));
     return WANT.map(([name, options, colors, speed]) => {

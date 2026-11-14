@@ -2,7 +2,8 @@
 import { esc, isDark } from "./helpers.js";
 import { SWATCHES, SEG_SETS } from "./defaults.js";
 import { fxStripHtml } from "./preview.js";
-import { styleInfo } from "./drivers/index.js";
+import { styleInfo, allStyles } from "./drivers/index.js";
+import { driftMinutes } from "./drift.js";
 
 const MENU_PATTERN = [["edit", "Load to paint"], ["overwrite", "Update with current"], ["rename", "Rename"], ["delete", "Delete"]];
 const MENU_FX = [["edit", "Edit"], ["dup", "Duplicate"], ["delete", "Delete"]];
@@ -40,7 +41,6 @@ export function patternsTab(s, lib) {
 
 export function effectsTab(s, lib, driver, ctx, n) {
   if (s.editing) return effectEditor(s, driver, ctx, n);
-  if (!driver.styles(ctx).length) return `<p class="hint">This light doesn't report any effects.</p>`;
   const tiles = lib.effects.map((fx) => `
     <div class="tile ${lib.active?.kind === "effect" && lib.active.id === fx.id ? "act" : ""}">
       <button class="hit" data-run-effect="${esc(fx.id)}">${fxStripHtml(fx, "t" + fx.id, n)}<span>${esc(fx.name)}</span><em>${esc(styleInfo(driver, ctx, fx.type).label)}</em></button>
@@ -69,11 +69,24 @@ export function effectEditor(s, driver, ctx, n) {
     : `<p class="hint">This style uses the light's own colours.</p>`;
   return `<div class="editor">${fxStripHtml(fx, "edit", n, "main")}
     <input class="namebox" value="${esc(fx.name)}" maxlength="28" placeholder="Effect name" data-ed="name">
-    <h4>Style</h4>${styleChooser(driver.styles(ctx), fx.type)}
+    <h4>Style</h4>${styleChooser(allStyles(driver, ctx), fx.type)}
     ${colours}
+    ${info.minutes ? `<h4>One full cycle takes</h4><div class="row">${[5, 15, 30, 60, 120].map((m) =>
+        `<button class="chip ${driftMinutes(fx) === m ? "on" : ""}" data-ed-min="${m}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>
+      <p class="hint">Runs in Home Assistant, so it can change as slowly as you like.</p>` : ""}
     ${info.speed ? `<h4>Speed <small data-speed>${fx.speed}%</small></h4><input type="range" min="1" max="100" value="${fx.speed}" data-ed="speed">` : ""}
     ${info.segments ? `<h4>Segments</h4><div class="row">${Object.entries(SEG_SETS).map(([k, v]) => `<button class="chip ${fx.segments === k ? "on" : ""}" data-ed-seg="${k}">${v}</button>`).join("")}</div>
       ${fx.segments === "selected" ? `<p class="hint">Uses the segments selected in Paint (${(fx.selected || []).length}).</p>` : ""}` : ""}
     <div class="row end"><button class="chip" data-act="ed-cancel">Cancel</button>
       <button class="chip" data-act="ed-try">▶ Try it</button><button class="chip pri" data-act="ed-save">Save</button></div></div>`;
+}
+
+/** Quick speed control shown under the strip while an effect runs. */
+export function speedBar(fx, info, minuteChoices) {
+  if (info.minutes) {
+    return `<div class="row speedbar"><span class="hint">Cycle</span>${minuteChoices.map((m) =>
+      `<button class="chip ${driftMinutes(fx) === m ? "on" : ""}" data-fx-min="${m}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>`;
+  }
+  if (!info.speed) return "";
+  return `<label class="bri speedbar"><span title="Effect speed">⏱</span><input type="range" min="1" max="100" value="${Number(fx.speed) || 50}" data-fx-speed><b data-fx-speed-label>${Number(fx.speed) || 50}%</b></label>`;
 }

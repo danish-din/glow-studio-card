@@ -17,5 +17,6 @@ export const segmentLights = {
     return ctx.call("light", "turn_on", { entity_id: e, rgb_color: [r, g, b] });
   })),
   run: (ctx, fx) => ctx.call("light", "turn_on", { entity_id: ctx.entity, effect: fx.type }),
+  setSpeed: async () => {}, // generic lights expose no effect speed
   defaultEffects: (ctx) => (ctx.hass.states[ctx.entity]?.attributes?.effect_list || []).slice(0, 12).map((n) => [n, n, [], 50]),
 };

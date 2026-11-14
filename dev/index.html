@@ -9,6 +9,7 @@ ha-card{display:block;border-radius:18px;border:1px solid rgba(255,255,255,.08);
 import "../dist/glow-studio-card.js";
 import { defaultLibrary } from "../src/defaults.js";
 import { pickDriver } from "../src/drivers/index.js";
+import { DRIFT_DEFAULTS } from "../src/drift.js";
 
 const params = new URLSearchParams(location.search);
 const kind = params.get("driver") || "t1";
@@ -33,12 +34,17 @@ const hass = {
 const cfg = { entity: "light.bed_strip", ...(kind === "wled" ? { wled_topic: "wled/desk" } : {}) };
 const driver = pickDriver(hass, cfg);
 const ctx = { hass, cfg, entity: cfg.entity };
-if (!params.has("fresh")) states["sensor.glow_studio_bed_strip"] = { state: "1", attributes: defaultLibrary(driver.segments(ctx), driver.defaultEffects(ctx)) };
+if (!params.has("fresh")) {
+  const lib = defaultLibrary(driver.segments(ctx), driver.defaultEffects(ctx));
+  DRIFT_DEFAULTS.forEach(([name, type, colors, minutes], i) => lib.effects.push({ id: `d${i}`, name, type, colors, minutes, speed: 50, segments: "all" }));
+  if (params.get("active")) { const fx = lib.effects.find((e) => e.id === params.get("active")); lib.active = { kind: "effect", id: fx.id, name: fx.name }; }
+  states["sensor.glow_studio_bed_strip"] = { state: "1", attributes: lib };
+}
 
 const c = document.getElementById("c");
 function push() { c.hass = { ...hass, states: { ...states } }; }
 c.setConfig(cfg); push();
 const R = () => c.shadowRoot;
 const tab = params.get("tab"); if (tab) setTimeout(() => R().querySelector(`[data-tab="${tab}"]`)?.click(), 50);
-if (params.has("editor")) setTimeout(() => { R().querySelector('[data-tab="effects"]').click(); R().querySelector('[data-menu="e0"]').click(); R().querySelector('[data-fx-act="edit"]').click(); }, 80);
+if (params.has("editor")) setTimeout(() => { const id = params.get("editor") === "1" ? "e0" : params.get("editor"); R().querySelector('[data-tab="effects"]').click(); R().querySelector(`[data-menu="${id}"]`).click(); R().querySelector('[data-fx-act="edit"]').click(); }, 80);
 </script></body></html>

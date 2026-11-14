@@ -33,6 +33,8 @@ each device's published API and covered by tests, but not yet confirmed on real 
 - **▦ Patterns**: save designs with a name; apply, rename, update or delete them. 11 starters included (Golden hour, Dusk, Ocean, Forest, Neon, Rainbow…), resized to your strip.
 - **✨ Effects**: ready-made effects for your strip type (Woodfire, Candlelight, Ocean waves, Aurora, Starry night…). Make your own: pick a style, colours, speed and (on the T1) which segments it runs on. **▶ Try it** before saving.
 - **Runs on the strip.** Effects use the device's own effect engine, so they're smooth and don't flood your network.
+- **⏱ Quick speed**: while an effect runs, a speed slider sits right under the strip. No need to open the editor.
+- **🌅 Slow effects** (minutes to hours): **Slow drift** cross-fades the whole strip through your colours; **Slow flow** moves them along it. One full cycle can take 5 minutes to 2 hours, far slower than any strip's built-in effects. Starters: Slow sunset, Ocean drift, Aurora drift, Ember drift, Calm night. Needs the drift script (below).
 - **Shared library.** Patterns and effects live in a retained MQTT topic, mirrored into an MQTT sensor, so every device sees the same library. No extra integration needed.
 - Brightness and power controls built in, visual card editor, follows reduced-motion settings.
 
@@ -102,6 +104,18 @@ segment_entities:
 | `segment_entities` | — | Segment lights in order along the strip (segment-lights driver). |
 | `library_topic` | `glow_studio/<light>/library` | Retained MQTT topic that stores the library. |
 | `library_entity` | `sensor.glow_studio_<light>` | MQTT sensor that mirrors the library. |
+| `drift_script` | `script.glow_studio_drift` | The script that runs slow effects. |
+
+### Slow effects: install the drift script
+
+Strip hardware can't change colour slowly enough for a 30-minute sunset, so slow effects are driven by a small
+Home Assistant script that the card starts and stops for you. Import it once:
+
+[![Import the Glow Studio drift script](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fdanish-din%2Fglow-studio-card%2Fblob%2Fmain%2Fblueprints%2Fscript%2Fglow_studio%2Fglow_studio_drift.yaml)
+
+Then **Create script** from the blueprint and name it **Glow Studio drift** (so it becomes `script.glow_studio_drift`).
+If you name it something else, set `drift_script: script.your_name` in the card config. It updates the strip about every 15 seconds
+and works with every supported strip type.
 
 ### Tip: open Glow Studio instead of the normal light dialog
 

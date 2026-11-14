@@ -4,6 +4,8 @@ import { RAINBOW } from "./defaults.js";
 /** Map a driver effect id/name onto one of a handful of preview animations. */
 export function previewKind(type = "", name = "") {
   const s = `${type} ${name}`.toLowerCase();
+  if (/^drift_flow/.test(type)) return "chasing";
+  if (/^drift/.test(type)) return "rainbow1";
   if (/rainbow|colou?r ?loop|rolling/.test(s)) return /flow|cycle|runner|rolling|rainbow2/.test(s) ? "rainbow2" : "rainbow1";
   if (/flicker|fire|candle|fading|fade|ember|flame/.test(s)) return "flicker";
   if (/breath|pulse|heart|lava|plasma|opal/.test(s)) return "breathing";
@@ -27,7 +29,8 @@ export function fxCss(fx, scope) {
   const kind = previewKind(fx.type, fx.name);
   const s = `${fx.type} ${fx.name}`.toLowerCase();
   const cols = fx.colors?.length ? fx.colors : fallbackPalette(kind, s);
-  const dur = 0.5 + ((100 - (Number(fx.speed) || 50)) / 100) * 5;
+  // Slow (drift) effects take minutes on the strip; the preview just shows them noticeably slower.
+  const dur = String(fx.type).startsWith("drift") ? 4 : 0.5 + ((100 - (Number(fx.speed) || 50)) / 100) * 5;
   const d = (x) => x.toFixed(2);
   const name = `fx_${String(scope).replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const stops = cols.map((c, k) => `${Math.round((k / cols.length) * 100)}%{background:${c};box-shadow:0 0 14px ${c}}`).join("")

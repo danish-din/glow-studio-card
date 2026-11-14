@@ -1,7 +1,7 @@
 import { GlowStudioCard } from "./card.js";
 import { GlowStudioCardEditor } from "./editor.js";
 
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 
 if (!customElements.get("glow-studio-card")) customElements.define("glow-studio-card", GlowStudioCard);
 if (!customElements.get("glow-studio-card-editor")) customElements.define("glow-studio-card-editor", GlowStudioCardEditor);

@@ -1,0 +1,123 @@
+blueprint:
+  name: Glow Studio drift
+  description: >
+    Slow colour effects for the Glow Studio card: colours cross-fade (or travel along the strip) over minutes
+    to hours, far slower than any strip's built-in effects. The card starts and stops this script for you.
+    Create one script from this blueprint and name it "Glow Studio drift" (entity script.glow_studio_drift),
+    or set drift_script in the card config if you name it differently.
+  domain: script
+  author: danish-din
+  source_url: https://github.com/danish-din/glow-studio-card/blob/main/blueprints/script/glow_studio/glow_studio_drift.yaml
+  homeassistant:
+    min_version: "2024.10.0"
+  input: {}
+
+mode: restart
+icon: mdi:weather-sunset
+
+fields:
+  driver:
+    description: Strip type (aqara_t1, aqara_t1m, hue_gradient, wled, segment_lights). Set by the card.
+    example: aqara_t1
+  entity:
+    description: The strip's light entity.
+  topic:
+    description: Zigbee2MQTT set topic, or WLED api topic.
+  segments:
+    description: Number of cells to colour.
+    example: 10
+  colors:
+    description: List of hex colours to drift through.
+    example: '["#ffb300", "#ff5500", "#41006e"]'
+  minutes:
+    description: Minutes for one full cycle through the colours.
+    example: 30
+  flow:
+    description: True = colours travel along the strip; false = the whole strip cross-fades together.
+    example: false
+  leds:
+    description: WLED total LED count.
+  segment_entities:
+    description: Segment lights in order (segment_lights driver).
+
+sequence:
+  - variables:
+      n: "{{ [1, segments | int(10)] | max }}"
+      pal: "{{ colors if colors is defined and colors is list and colors | count > 0 else ['#ff5500', '#8200dc'] }}"
+      cycle_s: "{{ [1, minutes | float(30)] | max * 60 }}"
+      steps: "{{ [12, [480, (cycle_s / 15) | round | int] | min] | max }}"
+      interval: "{{ cycle_s / steps }}"
+      is_flow: "{{ flow is defined and flow in [true, 'true', 'True', 1, '1'] }}"
+  - if:
+      - condition: template
+        value_template: "{{ entity is defined and is_state(entity, 'off') }}"
+    then:
+      - action: light.turn_on
+        target:
+          entity_id: "{{ entity }}"
+  - repeat:
+      while:
+        - condition: template
+          value_template: "{{ true }}"
+      sequence:
+        - variables:
+            t: "{{ ((repeat.index - 1) % steps) / steps }}"
+            frame: >-
+              {% set P = pal | count %}
+              {% set ns = namespace(out=[]) %}
+              {% for i in range(n) %}
+                {% set pos = ((t + ((i / n) if is_flow else 0)) % 1) * P %}
+                {% set k = pos | int %}{% set f = pos - k %}
+                {% set a = pal[k % P] %}{% set b = pal[(k + 1) % P] %}
+                {% set ar = [a[1:3] | int(0, 16), a[3:5] | int(0, 16), a[5:7] | int(0, 16)] %}
+                {% set br = [b[1:3] | int(0, 16), b[3:5] | int(0, 16), b[5:7] | int(0, 16)] %}
+                {% set ns.out = ns.out + [[(ar[0] + (br[0] - ar[0]) * f) | round | int,
+                                           (ar[1] + (br[1] - ar[1]) * f) | round | int,
+                                           (ar[2] + (br[2] - ar[2]) * f) | round | int]] %}
+              {% endfor %}
+              {{ ns.out }}
+        - choose:
+            - conditions: "{{ driver in ['aqara_t1', 'aqara_t1m'] }}"
+              sequence:
+                - action: mqtt.publish
+                  data:
+                    topic: "{{ topic }}"
+                    payload: >-
+                      {% set ns = namespace(s=[]) %}
+                      {% for c in frame %}{% set ns.s = ns.s + [{'segment': loop.index, 'color': {'r': c[0], 'g': c[1], 'b': c[2]}}] %}{% endfor %}
+                      {{ {'segment_colors': ns.s} | to_json }}
+            - conditions: "{{ driver == 'hue_gradient' }}"
+              sequence:
+                - action: mqtt.publish
+                  data:
+                    topic: "{{ topic }}"
+                    payload: >-
+                      {% set ns = namespace(h=[]) %}
+                      {% for c in frame[:9] %}{% set ns.h = ns.h + ['#%02x%02x%02x' | format(c[0], c[1], c[2])] %}{% endfor %}
+                      {{ {'state': 'ON', 'gradient': ns.h} | to_json }}
+            - conditions: "{{ driver == 'wled' }}"
+              sequence:
+                - action: mqtt.publish
+                  data:
+                    topic: "{{ topic }}"
+                    payload: >-
+                      {% set L = [1, leds | int(30)] | max %}
+                      {% set ns = namespace(r=[]) %}
+                      {% for c in frame %}
+                        {% set a = ((loop.index0 * L) / n) | round | int %}{% set z = ((loop.index * L) / n) | round | int %}
+                        {% if z > a %}{% set ns.r = ns.r + [a, z, '%02X%02X%02X' | format(c[0], c[1], c[2])] %}{% endif %}
+                      {% endfor %}
+                      {{ {'on': true, 'seg': [{'id': 0, 'fx': 0, 'i': ns.r}]} | to_json }}
+            - conditions: "{{ driver == 'segment_lights' }}"
+              sequence:
+                - repeat:
+                    count: "{{ [n, (segment_entities | default([])) | count] | min }}"
+                    sequence:
+                      - action: light.turn_on
+                        continue_on_error: true
+                        target:
+                          entity_id: "{{ segment_entities[repeat.index - 1] }}"
+                        data:
+                          rgb_color: "{{ frame[repeat.index - 1] }}"
+        - delay:
+            seconds: "{{ interval }}"

@@ -50,6 +50,7 @@ export const aqaraT1 = {
   caps: { colors: 8, speed: true, segments: true },
   paint: aqaraPaint,
   run: aqaraRun(true),
+  setSpeed: (ctx, fx) => ctx.mqtt(z2mTopic(ctx), { effect_speed: Number(fx.speed) || 50 }),
   defaultEffects: () => [
     ["Woodfire", "flicker", ["#ff3a00", "#ff6a00", "#ff9500", "#b31b00", "#ffb347"], 55],
     ["Candlelight", "flicker", ["#ff8c1a", "#ffb04d", "#ff7a00"], 30],
@@ -80,6 +81,7 @@ export const aqaraT1M = {
   caps: { colors: 8, speed: true, segments: false },
   paint: aqaraPaint,
   run: aqaraRun(false),
+  setSpeed: (ctx, fx) => ctx.mqtt(z2mTopic(ctx), { effect_speed: Number(fx.speed) || 50 }),
   defaultEffects: () => [
     ["Woodfire", "fading", ["#ff3a00", "#ff6a00", "#ff9500", "#b31b00"], 60],
     ["Candlelight", "breathing", ["#ff8c1a", "#ffb04d"], 30],
@@ -111,6 +113,7 @@ export const hueGradient = {
     await ensureOn(ctx);
     await ctx.mqtt(z2mTopic(ctx), { effect: fx.type, effect_speed: Math.max(0, Math.min(1, (Number(fx.speed) || 50) / 100)) });
   },
+  setSpeed: (ctx, fx) => ctx.mqtt(z2mTopic(ctx), { effect_speed: Math.max(0, Math.min(1, (Number(fx.speed) || 50) / 100)) }),
   defaultEffects: () => [
     ["Woodfire", "fireplace", [], 55], ["Candlelight", "candle", [], 30], ["Sunrise", "sunrise", [], 20],
     ["Sunset", "sunset", [], 20], ["Ocean", "underwater", [], 30], ["Starry night", "cosmos", [], 30],
