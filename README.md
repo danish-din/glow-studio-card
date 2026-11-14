@@ -8,9 +8,9 @@ paint every segment its own colour, save your designs, and run the strip's built
 (woodfire, candlelight, aurora…) with your own colours. Like the Yeelight / Aqara apps, but inside Home Assistant.
 
 <p align="center">
-  <img src="docs/paint.png" width="270" alt="Paint">
-  <img src="docs/patterns.png" width="270" alt="Patterns">
-  <img src="docs/effects.png" width="270" alt="Effects">
+  <img src="https://raw.githubusercontent.com/danish-din/strip-studio-card/main/docs/paint.png" width="270" alt="Paint">
+  <img src="https://raw.githubusercontent.com/danish-din/strip-studio-card/main/docs/patterns.png" width="270" alt="Patterns">
+  <img src="https://raw.githubusercontent.com/danish-din/strip-studio-card/main/docs/effects.png" width="270" alt="Effects">
 </p>
 
 ## Features
@@ -23,7 +23,7 @@ paint every segment its own colour, save your designs, and run the strip's built
 - **Zero config.** Pick the light; the Zigbee2MQTT topic and the number of segments (5 per metre) are detected automatically.
 - Brightness and power controls built in, visual card editor, follows reduced-motion settings.
 
-<p align="center"><img src="docs/editor.png" width="300" alt="Effect editor"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/danish-din/strip-studio-card/main/docs/editor.png" width="300" alt="Effect editor"></p>
 
 ## Requirements
 
