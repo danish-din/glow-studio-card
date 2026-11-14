@@ -1,23 +1,44 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glow Studio dev</title>
 <style>body{margin:0;padding:16px;background:linear-gradient(160deg,#1a1033,#0d0a1f);color:#eee;font-family:Roboto,system-ui,sans-serif}
 ha-card{display:block;border-radius:18px;border:1px solid rgba(255,255,255,.08);max-width:520px;margin:auto}</style></head><body>
 <glow-studio-card id="c"></glow-studio-card>
 <script type="module">
+// Mock Home Assistant for clicking around. ?driver=wled|hue|t1 · ?tab=… · ?editor=1 · ?fresh=1
 import "../dist/glow-studio-card.js";
+import { defaultLibrary } from "../src/defaults.js";
+import { pickDriver } from "../src/drivers/index.js";
+
 const params = new URLSearchParams(location.search);
-const states = {"light.bed_strip":{state:"on",attributes:{brightness:180,friendly_name:"Bed strip"}},
-  "number.bed_strip_length":{state:"2"}};
-if (!params.has("fresh")) states["sensor.glow_studio_bed_strip"] = {state:"1",attributes:{"version":1,"patterns":[{"id":"p0","name":"Golden hour","colors":["#ffc233","#ffb52d","#ffa828","#ff9b22","#ff8e1c","#ff8117","#ff7411","#ff670b","#ff5a06","#ff4d00"]},{"id":"p1","name":"Dusk","colors":["#000000","#41006e","#ff5500","#ff7a00","#ffa600","#ffa600","#ff7a00","#ff5500","#41006e","#000000"]},{"id":"p2","name":"Sunset sky","colors":["#8200dc","#8200dc","#ff5500","#ff5500","#ff5500","#ff5500","#ff5500","#ff5500","#8200dc","#8200dc"]},{"id":"p3","name":"Ocean","colors":["#001a66","#003177","#004788","#005e99","#0074aa","#008bbb","#00a1cc","#00b8dd","#00ceee","#00e5ff"]},{"id":"p4","name":"Forest","colors":["#0b3d0b","#1b4f0f","#2b6213","#3b7416","#4b861a","#5b991e","#6bab22","#7bbd25","#8bd029","#9be22d"]},{"id":"p5","name":"Candy","colors":["#ff4fa3","#8ad8ff","#ff4fa3","#8ad8ff","#ff4fa3","#8ad8ff","#ff4fa3","#8ad8ff","#ff4fa3","#8ad8ff"]},{"id":"p6","name":"Neon","colors":["#ff00e6","#ff00e6","#ff00e6","#ff00e6","#ff00e6","#00f0ff","#00f0ff","#00f0ff","#00f0ff","#00f0ff"]},{"id":"p7","name":"Rainbow","colors":["#ff0000","#ff6a00","#ffd000","#7aff00","#00ff6a","#00ffe1","#0080ff","#3a00ff","#b000ff","#ff00a8"]},{"id":"p8","name":"Reading","colors":["#ffd8a8","#ffd8a8","#ffd8a8","#ffd8a8","#ffd8a8","#ffd8a8","#ffd8a8","#ffd8a8","#ffd8a8","#ffd8a8"]},{"id":"p9","name":"Night light","colors":["#3a1200","#3a1200","#000000","#000000","#000000","#000000","#000000","#000000","#000000","#000000"]},{"id":"p10","name":"Ice","colors":["#ffffff","#e7efff","#d0deff","#b8ceff","#a0bdff","#89adff","#719cff","#598cff","#427bff","#2a6bff"]}],"effects":[{"id":"e0","name":"Woodfire","type":"flicker","colors":["#ff3a00","#ff6a00","#ff9500","#b31b00","#ffb347"],"speed":55,"segments":"all"},{"id":"e1","name":"Candlelight","type":"flicker","colors":["#ff8c1a","#ffb04d","#ff7a00"],"speed":30,"segments":"all"},{"id":"e2","name":"Ember glow","type":"breathing","colors":["#ff2a00","#7a0f00"],"speed":20,"segments":"all"},{"id":"e3","name":"Ocean waves","type":"chasing","colors":["#0040ff","#00b4ff","#00ffd5","#003080"],"speed":25,"segments":"all"},{"id":"e4","name":"Aurora","type":"chasing","colors":["#00ff9c","#00d4ff","#7a00ff","#00ff5a"],"speed":15,"segments":"all"},{"id":"e5","name":"Lava lamp","type":"breathing","colors":["#ff0040","#ff5a00","#c000ff"],"speed":15,"segments":"all"},{"id":"e6","name":"Starry night","type":"dash","colors":["#0a1aff","#ffffff","#3a6bff"],"speed":30,"segments":"all"},{"id":"e7","name":"Sunset drift","type":"breathing","colors":["#ffb300","#ff5500","#8200dc"],"speed":10,"segments":"all"},{"id":"e8","name":"Rainbow","type":"rainbow1","colors":[],"speed":50,"segments":"all"},{"id":"e9","name":"Rainbow flow","type":"rainbow2","colors":[],"speed":40,"segments":"all"},{"id":"e10","name":"Disco","type":"hopping","colors":["#ff0000","#00ff00","#0000ff","#ff00ff","#ffff00","#00ffff"],"speed":85,"segments":"all"},{"id":"e11","name":"Heartbeat","type":"breathing","colors":["#ff0022"],"speed":75,"segments":"all"},{"id":"e12","name":"Christmas","type":"chasing","colors":["#ff0000","#00c000","#ffffff"],"speed":40,"segments":"all"},{"id":"e13","name":"Police","type":"flash","colors":["#ff0000","#0000ff"],"speed":90,"segments":"all"}],"active":null,"current":["#8200dc","#8200dc","#ff5500","#ff5500","#ff5500","#ff5500","#ff5500","#ff5500","#8200dc","#8200dc"]}};
-const hass = {states, entities:{"light.bed_strip":{entity_id:"light.bed_strip",device_id:"d1"},"number.bed_strip_length":{entity_id:"number.bed_strip_length",device_id:"d1"}},
-  devices:{d1:{name:"Bed Strip"}},
+const kind = params.get("driver") || "t1";
+const WLED_FX = ["Solid", "Blink", "Breathe", "Wipe", "Rainbow", "Fire 2012", "Candle", "Pacifica", "Aurora", "Twinklefox", "Fireworks", "Plasma", "Colorwaves", "Lake", "Juggle", "Meteor"];
+const device = { t1: { name: "Bed Strip", model: "LED Strip T1", model_id: "LGYCDD01LM" },
+  wled: { name: "Desk WLED", manufacturer: "WLED" },
+  hue: { name: "TV Gradient", model: "Hue Play gradient lightstrip", model_id: "915005987201" } }[kind];
+const states = {
+  "light.bed_strip": { state: "on", attributes: { brightness: 180, friendly_name: "Bed strip", ...(kind === "wled" ? { effect_list: WLED_FX } : {}) } },
+  "number.bed_strip_length": { state: "2" },
+};
+const hass = {
+  states,
+  entities: { "light.bed_strip": { entity_id: "light.bed_strip", device_id: "d1" }, "number.bed_strip_length": { entity_id: "number.bed_strip_length", device_id: "d1" } },
+  devices: { d1: device },
   callService: async (d, s, data) => {
-    if (d === "mqtt" && data.topic.endsWith("/library")) { states["sensor.glow_studio_bed_strip"] = {state:"x",attributes:JSON.parse(data.payload)}; push(); }
+    console.log(d, s, data);
+    if (d === "mqtt" && data.topic.endsWith("/library")) { states["sensor.glow_studio_bed_strip"] = { state: "x", attributes: JSON.parse(data.payload) }; push(); }
     if (d === "light" && s === "toggle") { const l = states["light.bed_strip"]; l.state = l.state === "on" ? "off" : "on"; push(); }
-  }};
+  },
+};
+const cfg = { entity: "light.bed_strip", ...(kind === "wled" ? { wled_topic: "wled/desk" } : {}) };
+const driver = pickDriver(hass, cfg);
+const ctx = { hass, cfg, entity: cfg.entity };
+if (!params.has("fresh")) states["sensor.glow_studio_bed_strip"] = { state: "1", attributes: defaultLibrary(driver.segments(ctx), driver.defaultEffects(ctx)) };
+
 const c = document.getElementById("c");
-function push(){ c.hass = {...hass, states:{...states}}; }
-c.setConfig({entity:"light.bed_strip"}); push();
-const tab = params.get("tab"); if (tab) setTimeout(() => c.shadowRoot.querySelector(`[data-tab="${tab}"]`)?.click(), 50);
-if (params.has("editor")) setTimeout(() => { c.shadowRoot.querySelector('[data-tab="effects"]').click(); c.shadowRoot.querySelector('[data-menu="e0"]').click(); c.shadowRoot.querySelector('[data-fx-act="edit"]').click(); }, 80);
+function push() { c.hass = { ...hass, states: { ...states } }; }
+c.setConfig(cfg); push();
+const R = () => c.shadowRoot;
+const tab = params.get("tab"); if (tab) setTimeout(() => R().querySelector(`[data-tab="${tab}"]`)?.click(), 50);
+if (params.has("editor")) setTimeout(() => { R().querySelector('[data-tab="effects"]').click(); R().querySelector('[data-menu="e0"]').click(); R().querySelector('[data-fx-act="edit"]').click(); }, 80);
 </script></body></html>

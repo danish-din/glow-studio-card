@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { defaultLibrary, DEFAULT_PATTERNS, DEFAULT_EFFECTS, FX_TYPES } from "../src/defaults.js";
-import { fxCss, fxStripHtml } from "../src/preview.js";
+import { defaultLibrary, DEFAULT_PATTERNS } from "../src/defaults.js";
+import { fxCss, fxStripHtml, previewKind } from "../src/preview.js";
+import { DRIVERS } from "../src/drivers/index.js";
 
 const HEX = /^#[0-9a-f]{6}$/;
 
@@ -11,35 +12,46 @@ test("default library scales patterns to the strip length", () => {
     assert.equal(lib.patterns.length, DEFAULT_PATTERNS.length);
     lib.patterns.forEach((p) => { assert.equal(p.colors.length, n); p.colors.forEach((c) => assert.match(c, HEX)); });
     assert.equal(lib.current.length, n);
+    assert.deepEqual(lib.effects, []);
   }
 });
 
-test("default effects are valid T1 hardware effects", () => {
-  const lib = defaultLibrary(10);
-  assert.equal(lib.effects.length, DEFAULT_EFFECTS.length);
-  const ids = new Set();
-  for (const fx of lib.effects) {
-    assert.ok(fx.type in FX_TYPES, fx.type);
-    assert.ok(fx.colors.length <= 8, `${fx.name} has >8 colours`);
-    assert.ok(fx.speed >= 1 && fx.speed <= 100);
-    fx.colors.forEach((c) => assert.match(c, HEX));
-    assert.ok(!ids.has(fx.id)); ids.add(fx.id);
+test("default library takes the driver's starter effects", () => {
+  const lib = defaultLibrary(10, [["Woodfire", "flicker", ["#ff0000"], 55]]);
+  assert.deepEqual(lib.effects[0], { id: "e0", name: "Woodfire", type: "flicker", colors: ["#ff0000"], speed: 55, segments: "all" });
+});
+
+test("every fixed-list driver ships valid starter effects for its own styles", () => {
+  const ctx = { hass: { states: {}, entities: {}, devices: {} }, cfg: {}, entity: "light.x" };
+  for (const d of DRIVERS.filter((x) => ["aqara_t1", "aqara_t1m", "hue_gradient"].includes(x.id))) {
+    const styles = new Set(d.styles(ctx).map((s) => s.id));
+    const fx = d.defaultEffects(ctx);
+    assert.ok(fx.length >= 6, `${d.id} has starters`);
+    for (const [name, type, colors, speed] of fx) {
+      assert.ok(styles.has(type), `${d.id}: ${name} uses unknown style ${type}`);
+      assert.ok(colors.length <= d.caps.colors || colors.length === 0, `${d.id}: ${name} too many colours`);
+      colors.forEach((c) => assert.match(c, HEX));
+      assert.ok(speed >= 1 && speed <= 100);
+    }
   }
 });
 
-test("woodfire is a flicker in fire colours", () => {
-  const wood = defaultLibrary(10).effects.find((e) => e.name === "Woodfire");
-  assert.equal(wood.type, "flicker");
-  assert.ok(wood.colors.every((c) => parseInt(c.slice(1, 3), 16) > parseInt(c.slice(5, 7), 16)));
+test("preview maps brand effect names to sensible animations", () => {
+  const cases = { flicker: "flicker", "Fire 2012": "flicker", candle: "flicker", fading: "flicker", Breathe: "breathing",
+    rainbow1: "rainbow1", rainbow2: "rainbow2", rolling: "rainbow2", colorloop: "rainbow1", hopping: "hopping",
+    Strobe: "flash", Twinklefox: "dash", cosmos: "dash", Pacifica: "chasing" };
+  for (const [name, kind] of Object.entries(cases)) assert.equal(previewKind(name), kind, name);
 });
 
-test("preview css is generated for every effect type", () => {
-  for (const type of Object.keys(FX_TYPES)) {
-    const { css, anim, delay, cols } = fxCss({ type, colors: ["#ff0000", "#00ff00"], speed: 50 }, `x_${type}`);
-    assert.match(css, /@keyframes fx_x_/);
-    assert.ok(anim.includes("infinite"));
-    assert.equal(typeof delay(3), "string");
-    assert.ok(cols.length >= 2);
+test("preview css is generated for every animation kind, with or without colours", () => {
+  for (const type of ["flicker", "breathing", "chasing", "dash", "hopping", "flash", "rainbow1", "rainbow2", "Pacifica", "underwater", "cosmos", "opal"]) {
+    for (const colors of [["#ff0000", "#00ff00"], []]) {
+      const { css, anim, delay, cols } = fxCss({ type, colors, speed: 50 }, `x_${type}`);
+      assert.match(css, /@keyframes fx_x_/);
+      assert.ok(anim.includes("infinite"));
+      assert.equal(typeof delay(3), "string");
+      assert.ok(cols.length >= 1);
+    }
   }
 });
 

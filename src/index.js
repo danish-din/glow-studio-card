@@ -1,7 +1,7 @@
 import { GlowStudioCard } from "./card.js";
 import { GlowStudioCardEditor } from "./editor.js";
 
-const VERSION = "1.1.0";
+const VERSION = "2.0.0";
 
 if (!customElements.get("glow-studio-card")) customElements.define("glow-studio-card", GlowStudioCard);
 if (!customElements.get("glow-studio-card-editor")) customElements.define("glow-studio-card-editor", GlowStudioCardEditor);
@@ -10,7 +10,7 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "glow-studio-card",
   name: "Glow Studio",
-  description: "Paint segments, save patterns and run hardware effects on an Aqara T1 LED strip (Zigbee2MQTT).",
+  description: "Paint segments, save patterns and run hardware effects on addressable LED strips: Aqara T1/T1M, Hue gradient, WLED or any segment lights.",
   preview: false,
   documentationURL: "https://github.com/danish-din/glow-studio-card",
 });

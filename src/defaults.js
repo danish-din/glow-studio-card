@@ -1,10 +1,6 @@
-// Starter library: patterns are authored for 10 segments and resampled to the real strip length.
+// Starter library: patterns are authored for 10 segments and resampled to the real strip; effects come from the driver.
 import { scaleColors } from "./helpers.js";
 
-export const FX_TYPES = {
-  flicker: "Flicker", breathing: "Breathe", chasing: "Chase", dash: "Dash",
-  hopping: "Hop", flash: "Flash", rainbow1: "Rainbow", rainbow2: "Rainbow flow",
-};
 export const RAINBOW = ["#ff0000", "#ff8000", "#ffff00", "#00ff00", "#00ffff", "#0040ff", "#8000ff", "#ff00c0"];
 export const SWATCHES = ["#ffd8a8", "#ffe066", "#ffa600", "#ff5500", "#ff1a1a", "#ff2d8a", "#8200dc", "#41006e",
   "#2040ff", "#00b4ff", "#00ffd5", "#00d24a", "#ffffff", "#000000"];
@@ -31,27 +27,11 @@ export const DEFAULT_PATTERNS = [
   ["Ice", grad("#ffffff", "#2a6bff")],
 ];
 
-export const DEFAULT_EFFECTS = [
-  ["Woodfire", "flicker", ["#ff3a00", "#ff6a00", "#ff9500", "#b31b00", "#ffb347"], 55],
-  ["Candlelight", "flicker", ["#ff8c1a", "#ffb04d", "#ff7a00"], 30],
-  ["Ember glow", "breathing", ["#ff2a00", "#7a0f00"], 20],
-  ["Ocean waves", "chasing", ["#0040ff", "#00b4ff", "#00ffd5", "#003080"], 25],
-  ["Aurora", "chasing", ["#00ff9c", "#00d4ff", "#7a00ff", "#00ff5a"], 15],
-  ["Lava lamp", "breathing", ["#ff0040", "#ff5a00", "#c000ff"], 15],
-  ["Starry night", "dash", ["#0a1aff", "#ffffff", "#3a6bff"], 30],
-  ["Sunset drift", "breathing", ["#ffb300", "#ff5500", "#8200dc"], 10],
-  ["Rainbow", "rainbow1", [], 50],
-  ["Rainbow flow", "rainbow2", [], 40],
-  ["Disco", "hopping", ["#ff0000", "#00ff00", "#0000ff", "#ff00ff", "#ffff00", "#00ffff"], 85],
-  ["Heartbeat", "breathing", ["#ff0022"], 75],
-  ["Christmas", "chasing", ["#ff0000", "#00c000", "#ffffff"], 40],
-  ["Police", "flash", ["#ff0000", "#0000ff"], 90],
-];
-
-export const defaultLibrary = (segments) => ({
+/** @param effects [[name, type, colors, speed], …] from the driver */
+export const defaultLibrary = (segments, effects = []) => ({
   version: 1,
   patterns: DEFAULT_PATTERNS.map(([name, colors], i) => ({ id: `p${i}`, name, colors: scaleColors(colors, segments) })),
-  effects: DEFAULT_EFFECTS.map(([name, type, colors, speed], i) => ({ id: `e${i}`, name, type, colors, speed, segments: "all" })),
+  effects: effects.map(([name, type, colors, speed], i) => ({ id: `e${i}`, name, type, colors, speed, segments: "all" })),
   active: null,
   current: scaleColors(DEFAULT_PATTERNS[2][1], segments),
 });

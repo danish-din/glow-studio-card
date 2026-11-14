@@ -31,20 +31,3 @@ export const segString = (fx) => {
   if (fx.segments === "selected") return (fx.selected || []).map((i) => i + 1).join(",");
   return !fx.segments || fx.segments === "all" ? "" : fx.segments;
 };
-
-/** Segments = strip length (m) × 5, read from the Z2M "length" number entity on the same device. */
-export const detectSegments = (hass, entityId) => {
-  const dev = hass?.entities?.[entityId]?.device_id;
-  if (!dev) return null;
-  const len = Object.values(hass.entities).find(
-    (e) => e.device_id === dev && e.entity_id.startsWith("number.") && /_length$/.test(e.entity_id));
-  const metres = len ? parseFloat(hass.states[len.entity_id]?.state) : NaN;
-  return Number.isFinite(metres) && metres > 0 ? Math.round(metres * 5) : null;
-};
-
-/** Z2M set topic from the device name (Z2M names HA devices after their friendly name). */
-export const detectTopic = (hass, entityId, base = "zigbee2mqtt") => {
-  const dev = hass?.entities?.[entityId]?.device_id;
-  const name = dev ? hass.devices?.[dev]?.name : null;
-  return name ? `${base}/${name}/set` : null;
-};

@@ -3,22 +3,24 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 
-let defaultLibrary;
+let defaultLibrary, aqaraT1;
 const win = new Window();
 before(async () => {
   for (const k of ["HTMLElement", "customElements", "document", "CustomEvent", "Event", "window"]) globalThis[k] = k === "window" ? win : win[k];
   globalThis.confirm = () => true;
   await import("../src/index.js");
   ({ defaultLibrary } = await import("../src/defaults.js"));
+  ({ aqaraT1 } = await import("../src/drivers/zigbee2mqtt.js"));
 });
 
 const tick = (ms = 10) => new Promise((r) => setTimeout(r, ms));
 
-function mount({ lib = defaultLibrary(10), on = true } = {}) {
+const fullLib = () => defaultLibrary(10, aqaraT1.defaultEffects());
+function mount({ lib = fullLib(), on = true } = {}) {
   const calls = [];
   const hass = {
     entities: { "light.strip": { entity_id: "light.strip", device_id: "d1" } },
-    devices: { d1: { name: "Bed Strip" } },
+    devices: { d1: { name: "Bed Strip", model: "LED Strip T1", model_id: "LGYCDD01LM" } },
     states: {
       "light.strip": { state: on ? "on" : "off", attributes: { brightness: 128, friendly_name: "Bed strip" } },
       ...(lib ? { "sensor.glow_studio_strip": { state: "1", attributes: lib } } : {}),
@@ -93,20 +95,20 @@ test("select all + blend makes a gradient between the end colours", async () => 
 test("mirror toggles and save-as-pattern adds a named pattern", async () => {
   const { $, el } = mount();
   $("[data-act=mirror]").click();
-  assert.equal(el._mirror, true);
+  assert.equal(el._s.mirror, true);
   $("[data-act=save-pattern]").click();
   const input = $("[data-act=name-input]");
   input.value = "My test"; input.dispatchEvent(new Event("input"));
   $("[data-act=name-save]").click();
   await tick(30);
   assert.equal(el._lib().patterns.at(-1).name, "My test");
-  assert.equal(el._tab, "patterns");
+  assert.equal(el._s.tab, "patterns");
 });
 
 test("patterns: apply, rename, update and delete via the ⋯ menu", async () => {
   const { $, $$, el } = mount();
   $('[data-tab="patterns"]').click();
-  assert.equal($$(".tile").length, defaultLibrary(10).patterns.length);
+  assert.equal($$(".tile").length, fullLib().patterns.length);
   $('[data-apply-pattern="p3"]').click();
   await tick(30);
   assert.deepEqual(el._lib().active, { kind: "pattern", id: "p3", name: "Ocean" });
@@ -126,7 +128,7 @@ test("patterns: apply, rename, update and delete via the ⋯ menu", async () => 
   assert.ok(!el._lib().patterns.some((p) => p.id === "p2"));
   $('[data-menu="p4"]').click();
   $('[data-pattern-act="edit"][data-id="p4"]').click();
-  assert.equal(el._tab, "paint");
+  assert.equal(el._s.tab, "paint");
 });
 
 test("effects: run shows Stop; stop returns to the painted design", async () => {
@@ -187,7 +189,7 @@ test("power and brightness call the light services", async () => {
 });
 
 test("XSS: a hostile pattern name is rendered as text", () => {
-  const lib = defaultLibrary(10);
+  const lib = fullLib();
   lib.patterns[0].name = '<img src=x onerror="window.pwned=1">';
   const { $, $$ } = mount({ lib });
   $('[data-tab="patterns"]').click();
@@ -203,4 +205,29 @@ test("editor emits config-changed without empty keys", () => {
   ed.addEventListener("config-changed", (e) => { got = e.detail.config; });
   ed.querySelector("ha-form").dispatchEvent(new CustomEvent("value-changed", { detail: { value: { entity: "light.x", title: "" } } }));
   assert.deepEqual(got, { entity: "light.x" });
+});
+
+test("unknown light shows guidance instead of the studio", () => {
+  const el = document.createElement("glow-studio-card");
+  el.setConfig({ entity: "light.bulb" });
+  el.hass = { states: { "light.bulb": { state: "on", attributes: {} } }, entities: {}, devices: {}, callService: async () => {} };
+  assert.match(el.shadowRoot.textContent, /isn't recognised/);
+});
+
+test("drivers with long effect lists get a dropdown in the editor", async () => {
+  const effects = Array.from({ length: 20 }, (_, i) => `Effect ${i}`);
+  const el = document.createElement("glow-studio-card");
+  el.setConfig({ entity: "light.w", driver: "wled", wled_topic: "wled/w" });
+  const lib = defaultLibrary(10, [["Mine", "Effect 3", ["#ff0000"], 50]]);
+  el.hass = {
+    states: { "light.w": { state: "on", attributes: { effect_list: effects, brightness: 100 } }, "sensor.glow_studio_w": { state: "1", attributes: lib } },
+    entities: {}, devices: {}, callService: async () => {},
+  };
+  el.shadowRoot.querySelector('[data-tab="effects"]').click();
+  el.shadowRoot.querySelector("[data-act=new-effect]").click();
+  const sel = el.shadowRoot.querySelector("[data-ed-type-select]");
+  assert.ok(sel, "select rendered");
+  sel.value = "Effect 7"; sel.dispatchEvent(new Event("change"));
+  assert.equal(el._s.editing.type, "Effect 7");
+  assert.ok(el._s.editing.colors.length <= 3, "WLED takes up to 3 colours");
 });

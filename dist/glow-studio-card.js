@@ -21,32 +21,8 @@ var segString = (fx) => {
   if (fx.segments === "selected") return (fx.selected || []).map((i) => i + 1).join(",");
   return !fx.segments || fx.segments === "all" ? "" : fx.segments;
 };
-var detectSegments = (hass, entityId) => {
-  const dev = hass?.entities?.[entityId]?.device_id;
-  if (!dev) return null;
-  const len = Object.values(hass.entities).find(
-    (e) => e.device_id === dev && e.entity_id.startsWith("number.") && /_length$/.test(e.entity_id)
-  );
-  const metres = len ? parseFloat(hass.states[len.entity_id]?.state) : NaN;
-  return Number.isFinite(metres) && metres > 0 ? Math.round(metres * 5) : null;
-};
-var detectTopic = (hass, entityId, base = "zigbee2mqtt") => {
-  const dev = hass?.entities?.[entityId]?.device_id;
-  const name = dev ? hass.devices?.[dev]?.name : null;
-  return name ? `${base}/${name}/set` : null;
-};
 
 // src/defaults.js
-var FX_TYPES = {
-  flicker: "Flicker",
-  breathing: "Breathe",
-  chasing: "Chase",
-  dash: "Dash",
-  hopping: "Hop",
-  flash: "Flash",
-  rainbow1: "Rainbow",
-  rainbow2: "Rainbow flow"
-};
 var RAINBOW = ["#ff0000", "#ff8000", "#ffff00", "#00ff00", "#00ffff", "#0040ff", "#8000ff", "#ff00c0"];
 var SWATCHES = [
   "#ffd8a8",
@@ -86,33 +62,37 @@ var DEFAULT_PATTERNS = [
   ["Night light", ["#3a1200", "#3a1200", ...Array(8).fill(K)]],
   ["Ice", grad("#ffffff", "#2a6bff")]
 ];
-var DEFAULT_EFFECTS = [
-  ["Woodfire", "flicker", ["#ff3a00", "#ff6a00", "#ff9500", "#b31b00", "#ffb347"], 55],
-  ["Candlelight", "flicker", ["#ff8c1a", "#ffb04d", "#ff7a00"], 30],
-  ["Ember glow", "breathing", ["#ff2a00", "#7a0f00"], 20],
-  ["Ocean waves", "chasing", ["#0040ff", "#00b4ff", "#00ffd5", "#003080"], 25],
-  ["Aurora", "chasing", ["#00ff9c", "#00d4ff", "#7a00ff", "#00ff5a"], 15],
-  ["Lava lamp", "breathing", ["#ff0040", "#ff5a00", "#c000ff"], 15],
-  ["Starry night", "dash", ["#0a1aff", "#ffffff", "#3a6bff"], 30],
-  ["Sunset drift", "breathing", ["#ffb300", "#ff5500", "#8200dc"], 10],
-  ["Rainbow", "rainbow1", [], 50],
-  ["Rainbow flow", "rainbow2", [], 40],
-  ["Disco", "hopping", ["#ff0000", "#00ff00", "#0000ff", "#ff00ff", "#ffff00", "#00ffff"], 85],
-  ["Heartbeat", "breathing", ["#ff0022"], 75],
-  ["Christmas", "chasing", ["#ff0000", "#00c000", "#ffffff"], 40],
-  ["Police", "flash", ["#ff0000", "#0000ff"], 90]
-];
-var defaultLibrary = (segments) => ({
+var defaultLibrary = (segments, effects = []) => ({
   version: 1,
   patterns: DEFAULT_PATTERNS.map(([name, colors], i) => ({ id: `p${i}`, name, colors: scaleColors(colors, segments) })),
-  effects: DEFAULT_EFFECTS.map(([name, type, colors, speed], i) => ({ id: `e${i}`, name, type, colors, speed, segments: "all" })),
+  effects: effects.map(([name, type, colors, speed], i) => ({ id: `e${i}`, name, type, colors, speed, segments: "all" })),
   active: null,
   current: scaleColors(DEFAULT_PATTERNS[2][1], segments)
 });
 
 // src/preview.js
+function previewKind(type = "", name = "") {
+  const s = `${type} ${name}`.toLowerCase();
+  if (/rainbow|colou?r ?loop|rolling/.test(s)) return /flow|cycle|runner|rolling|rainbow2/.test(s) ? "rainbow2" : "rainbow1";
+  if (/flicker|fire|candle|fading|fade|ember|flame/.test(s)) return "flicker";
+  if (/breath|pulse|heart|lava|plasma|opal/.test(s)) return "breathing";
+  if (/hop|disco|random|juggle|\brain\b/.test(s)) return "hopping";
+  if (/flash|strobe|blink|police/.test(s)) return "flash";
+  if (/dash|twinkle|sparkle|star|glisten|cosmos|firework|enchant/.test(s)) return "dash";
+  return "chasing";
+}
+function fallbackPalette(kind, s) {
+  if (kind.startsWith("rainbow") || /loop|disco|firework/.test(s)) return RAINBOW;
+  if (/fire|candle|ember|flame|sun/.test(s)) return ["#ff3a00", "#ff9500", "#b31b00", "#ffb347"];
+  if (/ocean|under|water|lake|pacifica|wave/.test(s)) return ["#0040ff", "#00b4ff", "#00ffd5"];
+  if (/cosmos|star|night|enchant|aurora/.test(s)) return ["#1a1aff", "#7a00ff", "#00d4ff", "#ffffff"];
+  if (/sparkle|glisten|opal/.test(s)) return ["#ffffff", "#ffd8a8", "#8ad8ff"];
+  return ["#ff5500", "#ffa600", "#ff2d8a"];
+}
 function fxCss(fx, scope) {
-  const cols = String(fx.type).startsWith("rainbow") ? RAINBOW : fx.colors?.length ? fx.colors : ["#ff5500"];
+  const kind = previewKind(fx.type, fx.name);
+  const s = `${fx.type} ${fx.name}`.toLowerCase();
+  const cols = fx.colors?.length ? fx.colors : fallbackPalette(kind, s);
   const dur = 0.5 + (100 - (Number(fx.speed) || 50)) / 100 * 5;
   const d = (x) => x.toFixed(2);
   const name = `fx_${String(scope).replace(/[^a-zA-Z0-9_-]/g, "")}`;
@@ -120,7 +100,7 @@ function fxCss(fx, scope) {
   let anim = `${name} ${d(dur * cols.length)}s linear infinite`;
   let delay = (i) => `${-i * 0.35}s`;
   let extra = "";
-  switch (fx.type) {
+  switch (kind) {
     case "flicker":
       extra = `@keyframes ${name}_f{0%,100%{opacity:1}20%{opacity:.55}35%{opacity:.95}55%{opacity:.7}70%{opacity:1}85%{opacity:.6}}`;
       anim = `${name} ${d(dur * 1.6)}s steps(${cols.length}) infinite, ${name}_f ${d(dur / 2.5)}s ease-in-out infinite`;
@@ -152,7 +132,7 @@ function fxCss(fx, scope) {
     default:
       break;
   }
-  return { css: `@keyframes ${name}{${stops}}${extra}`, anim, delay, cols };
+  return { css: `@keyframes ${name}{${stops}}${extra}`, anim, delay, cols, kind };
 }
 function fxStripHtml(fx, scope, n, cls = "mini") {
   const { css, anim, delay, cols } = fxCss(fx, scope);
@@ -222,17 +202,327 @@ nav button.act{background:rgba(255,255,255,.1);color:var(--ss-text);box-shadow:i
 .warn{color:#ffb347;font-size:.85em;margin:8px 2px}
 `;
 
+// src/drivers/zigbee2mqtt.js
+var wait = (ms) => new Promise((r) => setTimeout(r, ms));
+var STEP_MS = 350;
+var deviceOf = (hass, entityId) => hass?.devices?.[hass?.entities?.[entityId]?.device_id];
+var modelOf = (hass, entityId) => {
+  const d = deviceOf(hass, entityId);
+  return `${d?.model_id || ""} ${d?.model || ""}`;
+};
+var z2mTopic = (ctx) => ctx.cfg.z2m_topic || (deviceOf(ctx.hass, ctx.entity)?.name ? `${ctx.cfg.z2m_base || "zigbee2mqtt"}/${deviceOf(ctx.hass, ctx.entity).name}/set` : null);
+var ensureOn = async (ctx) => {
+  if (!ctx.isOn()) {
+    await ctx.mqtt(z2mTopic(ctx), { state: "ON", brightness: 200 });
+    await wait(STEP_MS);
+  }
+};
+var z2mProblem = (ctx) => z2mTopic(ctx) ? null : "Couldn't work out the Zigbee2MQTT topic. Set z2m_topic in the card config.";
+var aqaraPaint = async (ctx, colors) => {
+  if (!colors.some((c) => !isDark(c))) return ctx.mqtt(z2mTopic(ctx), { state: "OFF" });
+  if (!ctx.isOn()) await ctx.mqtt(z2mTopic(ctx), { state: "ON", brightness: 200 });
+  return ctx.mqtt(z2mTopic(ctx), { segment_colors: colors.map((c, i) => ({ segment: i + 1, color: hex2rgb(c) })) });
+};
+var aqaraRun = (withSegments) => async (ctx, fx) => {
+  const t = z2mTopic(ctx);
+  await ensureOn(ctx);
+  if (fx.colors?.length) {
+    await ctx.mqtt(t, { effect_colors: fx.colors.slice(0, 8).map(hex2rgb) });
+    await wait(STEP_MS);
+  }
+  if (withSegments) {
+    await ctx.mqtt(t, { effect_segments: segString(fx) });
+    await wait(STEP_MS);
+  }
+  await ctx.mqtt(t, { effect_speed: Number(fx.speed) || 50 });
+  await wait(STEP_MS);
+  await ctx.mqtt(t, { effect: fx.type });
+};
+var aqaraT1 = {
+  id: "aqara_t1",
+  label: "Aqara LED Strip T1 (Zigbee2MQTT)",
+  beta: false,
+  match: (hass, e) => /LGYCDD01LM|LED Strip T1/i.test(modelOf(hass, e)),
+  segments: (ctx) => {
+    if (Number(ctx.cfg.segments) > 0) return Number(ctx.cfg.segments);
+    const dev = ctx.hass?.entities?.[ctx.entity]?.device_id;
+    const len = dev && Object.values(ctx.hass.entities).find((x) => x.device_id === dev && /^number\..*_length$/.test(x.entity_id));
+    const m = len ? parseFloat(ctx.hass.states[len.entity_id]?.state) : NaN;
+    return Number.isFinite(m) && m > 0 ? Math.round(m * 5) : 10;
+  },
+  problem: z2mProblem,
+  styles: () => [
+    { id: "flicker", label: "Flicker" },
+    { id: "breathing", label: "Breathe" },
+    { id: "chasing", label: "Chase" },
+    { id: "dash", label: "Dash" },
+    { id: "hopping", label: "Hop" },
+    { id: "flash", label: "Flash" },
+    { id: "rainbow1", label: "Rainbow", colors: 0 },
+    { id: "rainbow2", label: "Rainbow flow", colors: 0 }
+  ],
+  caps: { colors: 8, speed: true, segments: true },
+  paint: aqaraPaint,
+  run: aqaraRun(true),
+  defaultEffects: () => [
+    ["Woodfire", "flicker", ["#ff3a00", "#ff6a00", "#ff9500", "#b31b00", "#ffb347"], 55],
+    ["Candlelight", "flicker", ["#ff8c1a", "#ffb04d", "#ff7a00"], 30],
+    ["Ember glow", "breathing", ["#ff2a00", "#7a0f00"], 20],
+    ["Ocean waves", "chasing", ["#0040ff", "#00b4ff", "#00ffd5", "#003080"], 25],
+    ["Aurora", "chasing", ["#00ff9c", "#00d4ff", "#7a00ff", "#00ff5a"], 15],
+    ["Lava lamp", "breathing", ["#ff0040", "#ff5a00", "#c000ff"], 15],
+    ["Starry night", "dash", ["#0a1aff", "#ffffff", "#3a6bff"], 30],
+    ["Sunset drift", "breathing", ["#ffb300", "#ff5500", "#8200dc"], 10],
+    ["Rainbow", "rainbow1", [], 50],
+    ["Rainbow flow", "rainbow2", [], 40],
+    ["Disco", "hopping", ["#ff0000", "#00ff00", "#0000ff", "#ff00ff", "#ffff00", "#00ffff"], 85],
+    ["Heartbeat", "breathing", ["#ff0022"], 75],
+    ["Christmas", "chasing", ["#ff0000", "#00c000", "#ffffff"], 40],
+    ["Police", "flash", ["#ff0000", "#0000ff"], 90]
+  ]
+};
+var aqaraT1M = {
+  id: "aqara_t1m",
+  label: "Aqara Ceiling Light T1M / T1 ring (Zigbee2MQTT)",
+  beta: true,
+  match: (hass, e) => /CL-L02D|HCXDD12LM|Ceiling light T1/i.test(modelOf(hass, e)),
+  segments: (ctx) => Number(ctx.cfg.segments) || (/HCXDD12LM/i.test(modelOf(ctx.hass, ctx.entity)) ? 20 : 26),
+  problem: z2mProblem,
+  styles: () => [
+    { id: "flow1", label: "Flow" },
+    { id: "flow2", label: "Flow 2" },
+    { id: "fading", label: "Fade" },
+    { id: "hopping", label: "Hop" },
+    { id: "breathing", label: "Breathe" },
+    { id: "rolling", label: "Roll" }
+  ],
+  caps: { colors: 8, speed: true, segments: false },
+  paint: aqaraPaint,
+  run: aqaraRun(false),
+  defaultEffects: () => [
+    ["Woodfire", "fading", ["#ff3a00", "#ff6a00", "#ff9500", "#b31b00"], 60],
+    ["Candlelight", "breathing", ["#ff8c1a", "#ffb04d"], 30],
+    ["Ocean waves", "flow1", ["#0040ff", "#00b4ff", "#00ffd5"], 25],
+    ["Aurora", "flow2", ["#00ff9c", "#00d4ff", "#7a00ff"], 15],
+    ["Lava lamp", "fading", ["#ff0040", "#ff5a00", "#c000ff"], 15],
+    ["Rainbow", "rolling", ["#ff0000", "#ffd000", "#00ff6a", "#0080ff", "#b000ff"], 40],
+    ["Disco", "hopping", ["#ff0000", "#00ff00", "#0000ff", "#ff00ff"], 85],
+    ["Heartbeat", "breathing", ["#ff0022"], 75]
+  ]
+};
+var HUE_EFFECTS = ["candle", "fireplace", "colorloop", "sunrise", "sunset", "sparkle", "opal", "glisten", "underwater", "cosmos", "sunbeam", "enchant"];
+var cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+var hueGradient = {
+  id: "hue_gradient",
+  label: "Philips Hue gradient (Zigbee2MQTT)",
+  beta: true,
+  match: (hass, e) => /gradient/i.test(modelOf(hass, e)),
+  segments: (ctx) => Math.min(9, Math.max(1, Number(ctx.cfg.segments) || 5)),
+  problem: z2mProblem,
+  styles: () => HUE_EFFECTS.map((id) => ({ id, label: id === "colorloop" ? "Colour loop" : cap(id), colors: 0 })),
+  caps: { colors: 0, speed: true, segments: false },
+  paint: async (ctx, colors) => {
+    if (!colors.some((c) => !isDark(c))) return ctx.mqtt(z2mTopic(ctx), { state: "OFF" });
+    return ctx.mqtt(z2mTopic(ctx), { state: "ON", gradient: colors.slice(0, 9) });
+  },
+  run: async (ctx, fx) => {
+    await ensureOn(ctx);
+    await ctx.mqtt(z2mTopic(ctx), { effect: fx.type, effect_speed: Math.max(0, Math.min(1, (Number(fx.speed) || 50) / 100)) });
+  },
+  defaultEffects: () => [
+    ["Woodfire", "fireplace", [], 55],
+    ["Candlelight", "candle", [], 30],
+    ["Sunrise", "sunrise", [], 20],
+    ["Sunset", "sunset", [], 20],
+    ["Ocean", "underwater", [], 30],
+    ["Starry night", "cosmos", [], 30],
+    ["Sparkle", "sparkle", [], 50],
+    ["Opal", "opal", [], 30],
+    ["Glisten", "glisten", [], 40],
+    ["Enchant", "enchant", [], 40],
+    ["Sunbeam", "sunbeam", [], 30],
+    ["Colour loop", "colorloop", [], 50]
+  ]
+};
+
+// src/drivers/wled.js
+var wait2 = (ms) => new Promise((r) => setTimeout(r, ms));
+var deviceOf2 = (hass, e) => hass?.devices?.[hass?.entities?.[e]?.device_id];
+var wledLedCount = (ctx) => {
+  if (Number(ctx.cfg.leds) > 0) return Number(ctx.cfg.leds);
+  const dev = ctx.hass?.entities?.[ctx.entity]?.device_id;
+  const s = dev && Object.values(ctx.hass.entities).find((x) => x.device_id === dev && /^sensor\..*led_count$/.test(x.entity_id));
+  const v = s ? parseInt(ctx.hass.states[s.entity_id]?.state, 10) : NaN;
+  return Number.isFinite(v) && v > 0 ? v : 30;
+};
+var wledRanges = (colors, leds) => {
+  const out = [];
+  colors.forEach((c, i) => {
+    const start = Math.round(i * leds / colors.length), stop = Math.round((i + 1) * leds / colors.length);
+    if (stop > start) out.push(start, stop, c.replace("#", "").toUpperCase());
+  });
+  return out;
+};
+var apiTopic = (ctx) => ctx.cfg.wled_topic ? `${ctx.cfg.wled_topic.replace(/\/+$/, "")}/api` : null;
+var effectList = (ctx) => ctx.hass.states[ctx.entity]?.attributes?.effect_list || [];
+var WANT = [
+  ["Woodfire", ["Fire 2012", "Fire Flicker"], ["#ff3a00", "#ff9500", "#b31b00"], 55],
+  ["Candlelight", ["Candle", "Candle Multi"], ["#ff8c1a", "#ffb04d", "#ff7a00"], 30],
+  ["Ocean waves", ["Pacifica", "Lake", "Waves"], ["#0040ff", "#00b4ff", "#00ffd5"], 25],
+  ["Aurora", ["Aurora", "Colorwaves"], ["#00ff9c", "#00d4ff", "#7a00ff"], 15],
+  ["Lava lamp", ["Plasma", "Noise Pal", "Lava"], ["#ff0040", "#ff5a00", "#c000ff"], 15],
+  ["Starry night", ["Twinklefox", "Twinkle", "Starburst"], ["#0a1aff", "#ffffff", "#3a6bff"], 30],
+  ["Breathe", ["Breathe"], ["#ff2a00", "#7a0f00", "#000000"], 20],
+  ["Rainbow", ["Rainbow", "Colorloop"], [], 50],
+  ["Fireworks", ["Fireworks", "Fireworks Starburst"], ["#ff0000", "#00ff00", "#0000ff"], 60],
+  ["Disco", ["Rain", "Dancing Shadows", "Juggle"], ["#ff0000", "#00ff00", "#ff00ff"], 85]
+];
+var wled = {
+  id: "wled",
+  label: "WLED",
+  beta: true,
+  match: (hass, e) => /wled/i.test(deviceOf2(hass, e)?.manufacturer || "") || /^light\.wled/.test(e),
+  segments: (ctx) => Math.max(1, Math.min(wledLedCount(ctx), Number(ctx.cfg.segments) || 20)),
+  problem: (ctx) => apiTopic(ctx) ? null : "Painting needs WLED's MQTT topic: enable MQTT in WLED (Sync settings) and set wled_topic, e.g. wled/bedroom.",
+  styles: (ctx) => effectList(ctx).filter((n) => n !== "Solid").map((n) => ({ id: n, label: n })),
+  caps: { colors: 3, speed: true, segments: false },
+  paint: async (ctx, colors) => {
+    const t = apiTopic(ctx);
+    if (!t) throw new Error("wled_topic not set");
+    if (!colors.some((c) => !isDark(c))) return ctx.mqtt(t, { on: false });
+    return ctx.mqtt(t, { on: true, seg: [{ id: 0, fx: 0, i: wledRanges(colors, wledLedCount(ctx)) }] });
+  },
+  run: async (ctx, fx) => {
+    const t = apiTopic(ctx);
+    if (t) {
+      const seg = { id: 0, sx: Math.round((Number(fx.speed) || 50) / 100 * 255) };
+      if (fx.colors?.length) seg.col = fx.colors.slice(0, 3).map((c) => {
+        const { r, g, b } = hex2rgb(c);
+        return [r, g, b];
+      });
+      await ctx.mqtt(t, { on: true, seg: [seg] });
+      await wait2(150);
+    }
+    await ctx.call("light", "turn_on", { entity_id: ctx.entity, effect: fx.type });
+  },
+  defaultEffects: (ctx) => {
+    const have = new Set(effectList(ctx));
+    return WANT.map(([name, options, colors, speed]) => {
+      const type = options.find((o) => have.has(o));
+      return type ? [name, type, colors, speed] : null;
+    }).filter(Boolean);
+  }
+};
+
+// src/drivers/lights.js
+var list = (ctx) => Array.isArray(ctx.cfg.segment_entities) ? ctx.cfg.segment_entities : [];
+var segmentLights = {
+  id: "segment_lights",
+  label: "Segment lights (any brand)",
+  beta: true,
+  match: (_hass, _e, cfg) => Array.isArray(cfg?.segment_entities) && cfg.segment_entities.length > 0,
+  segments: (ctx) => Math.max(1, list(ctx).length),
+  problem: (ctx) => list(ctx).length ? null : "Add segment_entities: the light for each segment, in order along the strip.",
+  styles: (ctx) => (ctx.hass.states[ctx.entity]?.attributes?.effect_list || []).map((n) => ({ id: n, label: n })),
+  caps: { colors: 0, speed: false, segments: false },
+  paint: (ctx, colors) => Promise.all(list(ctx).map((e, i) => {
+    const c = colors[i] || "#000000";
+    if (isDark(c)) return ctx.call("light", "turn_off", { entity_id: e });
+    const { r, g, b } = hex2rgb(c);
+    return ctx.call("light", "turn_on", { entity_id: e, rgb_color: [r, g, b] });
+  })),
+  run: (ctx, fx) => ctx.call("light", "turn_on", { entity_id: ctx.entity, effect: fx.type }),
+  defaultEffects: (ctx) => (ctx.hass.states[ctx.entity]?.attributes?.effect_list || []).slice(0, 12).map((n) => [n, n, [], 50])
+};
+
+// src/drivers/index.js
+var DRIVERS = [segmentLights, aqaraT1, aqaraT1M, hueGradient, wled];
+var DRIVER_OPTIONS = DRIVERS.map((d) => ({ value: d.id, label: d.label + (d.beta ? " (beta)" : "") }));
+function pickDriver(hass, cfg) {
+  if (cfg.driver && cfg.driver !== "auto") return DRIVERS.find((d) => d.id === cfg.driver) || null;
+  return DRIVERS.find((d) => d.match(hass, cfg.entity, cfg)) || null;
+}
+function styleInfo(driver, ctx, type) {
+  const s = driver.styles(ctx).find((x) => x.id === type);
+  const colors = s && s.colors !== void 0 ? s.colors : driver.caps.colors;
+  return { label: s?.label || type, colors, speed: driver.caps.speed, segments: driver.caps.segments };
+}
+
+// src/views.js
+var MENU_PATTERN = [["edit", "Load to paint"], ["overwrite", "Update with current"], ["rename", "Rename"], ["delete", "Delete"]];
+var MENU_FX = [["edit", "Edit"], ["dup", "Duplicate"], ["delete", "Delete"]];
+var menu = (attr, id, items) => `<div class="menu">${items.map(([a, l]) => `<button class="${a === "delete" ? "danger" : ""}" ${attr}="${a}" data-id="${esc(id)}">${l}</button>`).join("")}</div>`;
+function paintTab(s) {
+  const naming = s.naming?.kind === "pattern-new";
+  return `<div class="swatches">${SWATCHES.map((c) => `<button class="sw ${c === s.color ? "cur" : ""}" data-color="${c}" style="background:${c}" title="${c === "#000000" ? "Off" : c}">${c === "#000000" ? "\u2298" : ""}</button>`).join("")}
+      <label class="sw custom" title="Any colour"><input type="color" value="${s.color}" data-act="pick"><span style="background:${s.color}"></span></label></div>
+    <p class="hint">Tap or drag across the strip to paint. ${s.sel.size ? `${s.sel.size} selected.` : "Long-press a segment to select it."}</p>
+    <div class="row">
+      <button class="chip ${s.mirror ? "on" : ""}" data-act="mirror">\u21CB Mirror</button>
+      <button class="chip" data-act="fill">Fill all</button><button class="chip" data-act="blend">\u27F7 Blend</button>
+      <button class="chip" data-act="selall">Select all</button><button class="chip" data-act="selnone">Clear selection</button>
+    </div>
+    ${naming ? `<div class="row name"><input placeholder="Pattern name" maxlength="28" data-act="name-input"><button class="chip pri" data-act="name-save">Save</button><button class="chip" data-act="name-cancel">Cancel</button></div>` : `<button class="wide pri" data-act="save-pattern">\uFF0B Save as pattern</button>`}`;
+}
+function patternsTab(s, lib) {
+  const ren = s.naming?.kind === "pattern-rename" ? s.naming.id : null;
+  const tiles = lib.patterns.map((p) => `
+    <div class="tile ${lib.active?.kind === "pattern" && lib.active.id === p.id ? "act" : ""}">
+      <button class="hit" data-apply-pattern="${esc(p.id)}">
+        <div class="mini strip" style="--n:${p.colors.length}">${p.colors.map((c) => `<i style="background:${c};box-shadow:${isDark(c) ? "none" : `0 0 8px ${c}`}"></i>`).join("")}</div>
+        ${ren === p.id ? "" : `<span>${esc(p.name)}</span>`}</button>
+      ${ren === p.id ? `<div class="row name"><input value="${esc(p.name)}" maxlength="28" data-act="name-input"><button class="chip pri" data-act="name-save">OK</button></div>` : ""}
+      <button class="dots" data-menu="${esc(p.id)}">\u22EF</button>
+      ${s.menu === p.id ? menu("data-pattern-act", p.id, MENU_PATTERN) : ""}
+    </div>`).join("");
+  return `<div class="grid">${tiles || `<p class="hint">No patterns yet. Paint something and save it.</p>`}</div>`;
+}
+function effectsTab(s, lib, driver, ctx, n) {
+  if (s.editing) return effectEditor(s, driver, ctx, n);
+  if (!driver.styles(ctx).length) return `<p class="hint">This light doesn't report any effects.</p>`;
+  const tiles = lib.effects.map((fx) => `
+    <div class="tile ${lib.active?.kind === "effect" && lib.active.id === fx.id ? "act" : ""}">
+      <button class="hit" data-run-effect="${esc(fx.id)}">${fxStripHtml(fx, "t" + fx.id, n)}<span>${esc(fx.name)}</span><em>${esc(styleInfo(driver, ctx, fx.type).label)}</em></button>
+      <button class="dots" data-menu="${esc(fx.id)}">\u22EF</button>
+      ${s.menu === fx.id ? menu("data-fx-act", fx.id, MENU_FX) : ""}
+    </div>`).join("");
+  return `<div class="grid">${tiles}</div><button class="wide pri" data-act="new-effect">\uFF0B New effect</button>`;
+}
+function styleChooser(styles, current) {
+  if (styles.length > 12) {
+    return `<select class="namebox" data-ed-type-select>${styles.map((st) => `<option value="${esc(st.id)}" ${st.id === current ? "selected" : ""}>${esc(st.label)}</option>`).join("")}</select>`;
+  }
+  return `<div class="row">${styles.map((st) => `<button class="chip ${st.id === current ? "on" : ""}" data-ed-type="${esc(st.id)}">${esc(st.label)}</button>`).join("")}</div>`;
+}
+function effectEditor(s, driver, ctx, n) {
+  const fx = s.editing;
+  const info = styleInfo(driver, ctx, fx.type);
+  const colours = info.colors > 0 ? `
+    <h4>Colours <small>${fx.colors.length}/${info.colors}</small></h4>
+    <div class="swatches">${fx.colors.map((c, k) => `<span class="sw cur rm" style="background:${c}" data-ed-rm="${k}" title="Remove">\xD7</span>`).join("")}
+      ${fx.colors.length < info.colors ? `<label class="sw custom" title="Add colour"><input type="color" value="#ff5500" data-ed="add"><span>\uFF0B</span></label>` : ""}</div>
+    <div class="swatches small">${SWATCHES.slice(0, 13).map((c) => `<button class="sw" style="background:${c}" data-ed-add="${c}"></button>`).join("")}</div>` : `<p class="hint">This style uses the light's own colours.</p>`;
+  return `<div class="editor">${fxStripHtml(fx, "edit", n, "main")}
+    <input class="namebox" value="${esc(fx.name)}" maxlength="28" placeholder="Effect name" data-ed="name">
+    <h4>Style</h4>${styleChooser(driver.styles(ctx), fx.type)}
+    ${colours}
+    ${info.speed ? `<h4>Speed <small data-speed>${fx.speed}%</small></h4><input type="range" min="1" max="100" value="${fx.speed}" data-ed="speed">` : ""}
+    ${info.segments ? `<h4>Segments</h4><div class="row">${Object.entries(SEG_SETS).map(([k, v]) => `<button class="chip ${fx.segments === k ? "on" : ""}" data-ed-seg="${k}">${v}</button>`).join("")}</div>
+      ${fx.segments === "selected" ? `<p class="hint">Uses the segments selected in Paint (${(fx.selected || []).length}).</p>` : ""}` : ""}
+    <div class="row end"><button class="chip" data-act="ed-cancel">Cancel</button>
+      <button class="chip" data-act="ed-try">\u25B6 Try it</button><button class="chip pri" data-act="ed-save">Save</button></div></div>`;
+}
+
 // src/card.js
 var Base = typeof HTMLElement !== "undefined" ? HTMLElement : class {
 };
-var wait = (ms) => new Promise((r) => setTimeout(r, ms));
-var STEP_MS = 350;
+var wait3 = (ms) => new Promise((r) => setTimeout(r, ms));
 var GlowStudioCard = class extends Base {
   static getConfigElement() {
     return document.createElement("glow-studio-card-editor");
   }
   static getStubConfig(hass) {
-    const light = Object.keys(hass?.states || {}).find((e) => e.startsWith("light.") && /strip|led/i.test(e));
+    const light = Object.keys(hass?.states || {}).find((e) => e.startsWith("light.") && /strip|led|wled|gradient/i.test(e));
     return { entity: light || "" };
   }
   setConfig(config) {
@@ -247,29 +537,33 @@ var GlowStudioCard = class extends Base {
       ...config,
       entity
     };
-    this._tab = "paint";
-    this._sel = /* @__PURE__ */ new Set();
-    this._color = "#ff5500";
-    this._mirror = false;
-    this._editing = null;
-    this._menu = null;
-    this._naming = null;
+    this._s = { tab: "paint", sel: /* @__PURE__ */ new Set(), color: "#ff5500", mirror: false, editing: null, menu: null, naming: null };
     this._libSig = "";
     this._paint = null;
     this._dragging = false;
+    this._error = null;
+    this._driver = void 0;
   }
-  /* ---------- derived config ---------- */
+  /* ---------- context handed to drivers ---------- */
+  get _ctx() {
+    return {
+      hass: this._hass,
+      cfg: this._cfg,
+      entity: this._cfg.entity,
+      isOn: () => this._hass.states[this._cfg.entity]?.state === "on",
+      mqtt: (topic, obj) => this._hass.callService("mqtt", "publish", { topic, payload: JSON.stringify(obj) }),
+      call: (domain, service, data) => this._hass.callService(domain, service, data)
+    };
+  }
   get _n() {
-    return Number(this._cfg.segments) || detectSegments(this._hass, this._cfg.entity) || 10;
-  }
-  get _topic() {
-    return this._cfg.z2m_topic || detectTopic(this._hass, this._cfg.entity, this._cfg.z2m_base);
+    return this._driver ? this._driver.segments(this._ctx) : Number(this._cfg.segments) || 10;
   }
   get _light() {
     return this._hass?.states[this._cfg.entity];
   }
   set hass(hass) {
     this._hass = hass;
+    if (this._driver === void 0 || !this._driver && !this._cfg.driver) this._driver = pickDriver(hass, this._cfg);
     const lib = this._lib();
     if (!this._paint) this._paint = lib?.current?.length ? scaleColors(lib.current, this._n) : Array(this._n).fill("#ffa600");
     if (this._dragging) return;
@@ -319,22 +613,24 @@ var GlowStudioCard = class extends Base {
       icon: "mdi:palette"
     };
     await this._hass.callService("mqtt", "publish", { topic: `homeassistant/sensor/${id}/library/config`, payload: JSON.stringify(disc), retain: true });
-    await wait(1500);
-    await this._hass.callService("mqtt", "publish", { topic: this._cfg.library_topic, payload: JSON.stringify(defaultLibrary(this._n)), retain: true });
+    await wait3(1500);
+    const lib = defaultLibrary(this._n, this._driver.defaultEffects(this._ctx));
+    await this._hass.callService("mqtt", "publish", { topic: this._cfg.library_topic, payload: JSON.stringify(lib), retain: true });
   }
-  /* ---------- strip I/O ---------- */
-  _pub(obj) {
-    return this._hass.callService("mqtt", "publish", { topic: this._topic, payload: JSON.stringify(obj) });
+  /* ---------- talking to the strip (via the driver) ---------- */
+  async _guard(fn) {
+    try {
+      this._error = null;
+      await fn();
+    } catch (e) {
+      this._error = e?.message || String(e);
+      this._render();
+    }
   }
   _sendPaint(colors, delay = 220) {
     clearTimeout(this._sendT);
-    this._sendT = setTimeout(async () => {
-      if (!colors.some((c) => !isDark(c))) {
-        await this._pub({ state: "OFF" });
-        return;
-      }
-      if (this._light?.state !== "on") await this._pub({ state: "ON", brightness: 200 });
-      await this._pub({ segment_colors: colors.map((c, i) => ({ segment: i + 1, color: hex2rgb(c) })) });
+    this._sendT = setTimeout(() => this._guard(async () => {
+      await this._driver.paint(this._ctx, colors);
       const lib = this._lib();
       if (!lib) return;
       const fromPattern = lib.active?.kind === "pattern" && lib.patterns.some((p) => p.id === lib.active.id && JSON.stringify(p.colors) === JSON.stringify(colors));
@@ -343,7 +639,7 @@ var GlowStudioCard = class extends Base {
         if (!fromPattern) lib.active = { kind: "pattern", id: null, name: "Custom" };
         await this._saveLib(lib);
       }
-    }, delay);
+    }), delay);
   }
   async _applyPattern(p) {
     this._paint = scaleColors(p.colors, this._n);
@@ -354,25 +650,15 @@ var GlowStudioCard = class extends Base {
     this._sendPaint(this._paint, 0);
     this._render();
   }
-  async _runEffect(fx, remember = true) {
-    if (this._light?.state !== "on") {
-      await this._pub({ state: "ON", brightness: 200 });
-      await wait(STEP_MS);
-    }
-    if (!fx.type.startsWith("rainbow")) {
-      await this._pub({ effect_colors: (fx.colors.length ? fx.colors : ["#ff5500"]).slice(0, 8).map(hex2rgb) });
-      await wait(STEP_MS);
-    }
-    await this._pub({ effect_segments: segString(fx) });
-    await wait(STEP_MS);
-    await this._pub({ effect_speed: Number(fx.speed) || 50 });
-    await wait(STEP_MS);
-    await this._pub({ effect: fx.type });
-    if (remember) {
-      const lib = this._lib();
-      lib.active = { kind: "effect", id: fx.id, name: fx.name };
-      await this._saveLib(lib);
-    }
+  _runEffect(fx, remember = true) {
+    return this._guard(async () => {
+      await this._driver.run(this._ctx, fx);
+      if (remember) {
+        const lib = this._lib();
+        lib.active = { kind: "effect", id: fx.id, name: fx.name };
+        await this._saveLib(lib);
+      }
+    });
   }
   async _stop() {
     this._sendPaint(this._paint, 0);
@@ -382,14 +668,14 @@ var GlowStudioCard = class extends Base {
   }
   /* ---------- painting ---------- */
   _paintSeg(i) {
-    (this._mirror ? [i, this._n - 1 - i] : [i]).forEach((k) => {
-      this._paint[k] = this._color;
+    (this._s.mirror ? [i, this._n - 1 - i] : [i]).forEach((k) => {
+      this._paint[k] = this._s.color;
     });
     this._updateStrip();
     this._sendPaint(this._paint);
   }
   _blend() {
-    const s = [...this._sel].sort((a2, b2) => a2 - b2);
+    const s = [...this._s.sel].sort((a2, b2) => a2 - b2);
     const [a, b] = s.length >= 2 ? [s[0], s[s.length - 1]] : [0, this._n - 1];
     for (let i = a; i <= b; i++) this._paint[i] = mix(this._paint[a], this._paint[b], (i - a) / Math.max(1, b - a));
     this._updateStrip();
@@ -399,111 +685,54 @@ var GlowStudioCard = class extends Base {
     this.shadowRoot.querySelectorAll(".main.strip i[data-seg]").forEach((el, i) => {
       el.style.background = this._paint[i];
       el.style.boxShadow = isDark(this._paint[i]) ? "none" : `0 0 18px ${this._paint[i]}aa`;
-      el.classList.toggle("sel", this._sel.has(i));
+      el.classList.toggle("sel", this._s.sel.has(i));
     });
   }
   /* ---------- rendering ---------- */
   _render() {
     if (!this._hass || !this.shadowRoot) return;
-    const lib = this._lib();
     const head = `<style>${STYLES}</style>`;
-    if (!this._light) {
-      this.shadowRoot.innerHTML = `${head}<ha-card><p class="warn">Entity ${esc(this._cfg.entity)} not found.</p></ha-card>`;
-      return;
-    }
+    const msg = (html) => {
+      this.shadowRoot.innerHTML = `${head}<ha-card><div class="setup">${html}</div></ha-card>`;
+    };
+    if (!this._light) return msg(`<p class="warn">Entity ${esc(this._cfg.entity)} not found.</p>`);
+    if (!this._driver) return msg(`<h3>${esc(this._cfg.title)}</h3><p>This light isn't recognised as an addressable strip.
+      Pick a driver in the card editor, or list <code>segment_entities</code> if each segment is its own light.</p>`);
+    const lib = this._lib();
     if (!lib) {
-      this.shadowRoot.innerHTML = `${head}<ha-card><div class="setup"><h3>${esc(this._cfg.title)}</h3>
-        <p>First run: create the shared library of patterns and effects for this strip (${this._n} segments).</p>
-        <button class="wide pri" data-act="setup">\u2728 Set up Glow Studio</button></div></ha-card>`;
+      msg(`<h3>${esc(this._cfg.title)}</h3><p>First run: create the shared library of patterns and effects for this ${esc(this._driver.label)} (${this._n} segments).</p>
+        <button class="wide pri" data-act="setup">\u2728 Set up Glow Studio</button>`);
       this.shadowRoot.querySelector("[data-act=setup]").onclick = () => this._setup();
       return;
     }
-    const on = this._light.state === "on";
+    const on = this._light.state === "on", s = this._s, ctx = this._ctx;
     const bri = Math.round((this._light.attributes?.brightness || 0) / 2.55);
     const fxActive = lib.active?.kind === "effect" ? lib.effects.find((e) => e.id === lib.active.id) : null;
-    const showFx = fxActive && on && this._tab !== "paint";
-    const strip = showFx ? fxStripHtml(fxActive, "main", this._n, "main") : `<div class="main strip" style="--n:${this._n}">${this._paint.map((c, i) => `<i data-seg="${i}" class="${this._sel.has(i) ? "sel" : ""}" style="background:${c};box-shadow:${isDark(c) ? "none" : `0 0 18px ${c}aa`}"></i>`).join("")}</div>`;
+    const strip = fxActive && on && s.tab !== "paint" ? fxStripHtml(fxActive, "main", this._n, "main") : `<div class="main strip" style="--n:${this._n}">${this._paint.map((c, i) => `<i data-seg="${i}" class="${s.sel.has(i) ? "sel" : ""}" style="background:${c};box-shadow:${isDark(c) ? "none" : `0 0 18px ${c}aa`}"></i>`).join("")}</div>`;
     const tabs = { paint: "\u{1F3A8} Paint", patterns: "\u25A6 Patterns", effects: "\u2728 Effects" };
-    const body = this._tab === "paint" ? this._paintTab() : this._tab === "patterns" ? this._patternsTab(lib) : this._effectsTab(lib);
+    const body = s.tab === "paint" ? paintTab(s) : s.tab === "patterns" ? patternsTab(s, lib) : effectsTab(s, lib, this._driver, ctx, this._n);
+    const problem = this._error || this._driver.problem(ctx);
     this.shadowRoot.innerHTML = `${head}<ha-card>
       <header>
         <div class="title"><span>${esc(this._cfg.title)}</span><small>${esc(on ? lib.active?.name || "Custom" : "Off")}${fxActive && on ? " \xB7 effect" : ""}</small></div>
         ${fxActive && on ? `<button class="chip stop" data-act="stop">\u25A0 Stop</button>` : ""}
         <button class="power ${on ? "on" : ""}" data-act="power" title="On / off">\u23FB</button>
       </header>
-      ${this._topic ? "" : `<p class="warn">Couldn't work out the Zigbee2MQTT topic. Set <code>z2m_topic</code> in the card config.</p>`}
+      ${problem ? `<p class="warn">${esc(problem)}</p>` : ""}
       ${strip}
       <label class="bri"><span>\u2600</span><input type="range" min="1" max="100" value="${on ? bri : 0}" data-act="bri"><b>${on ? bri + "%" : "off"}</b></label>
-      <nav>${Object.entries(tabs).map(([t, l]) => `<button class="${this._tab === t ? "act" : ""}" data-tab="${t}">${l}</button>`).join("")}</nav>
+      <nav>${Object.entries(tabs).map(([t, l]) => `<button class="${s.tab === t ? "act" : ""}" data-tab="${t}">${l}</button>`).join("")}</nav>
       <section>${body}</section></ha-card>`;
     this._wire();
   }
-  _paintTab() {
-    const naming = this._naming?.kind === "pattern-new";
-    return `<div class="swatches">${SWATCHES.map((c) => `<button class="sw ${c === this._color ? "cur" : ""}" data-color="${c}" style="background:${c}" title="${c === "#000000" ? "Off" : c}">${c === "#000000" ? "\u2298" : ""}</button>`).join("")}
-        <label class="sw custom" title="Any colour"><input type="color" value="${this._color}" data-act="pick"><span style="background:${this._color}"></span></label></div>
-      <p class="hint">Tap or drag across the strip to paint. ${this._sel.size ? `${this._sel.size} selected.` : "Long-press a segment to select it."}</p>
-      <div class="row">
-        <button class="chip ${this._mirror ? "on" : ""}" data-act="mirror">\u21CB Mirror</button>
-        <button class="chip" data-act="fill">Fill all</button><button class="chip" data-act="blend">\u27F7 Blend</button>
-        <button class="chip" data-act="selall">Select all</button><button class="chip" data-act="selnone">Clear selection</button>
-      </div>
-      ${naming ? `<div class="row name"><input placeholder="Pattern name" maxlength="28" data-act="name-input"><button class="chip pri" data-act="name-save">Save</button><button class="chip" data-act="name-cancel">Cancel</button></div>` : `<button class="wide pri" data-act="save-pattern">\uFF0B Save as pattern</button>`}`;
-  }
-  _patternsTab(lib) {
-    const ren = this._naming?.kind === "pattern-rename" ? this._naming.id : null;
-    const tiles = lib.patterns.map((p) => `
-      <div class="tile ${lib.active?.kind === "pattern" && lib.active.id === p.id ? "act" : ""}">
-        <button class="hit" data-apply-pattern="${esc(p.id)}">
-          <div class="mini strip" style="--n:${p.colors.length}">${p.colors.map((c) => `<i style="background:${c};box-shadow:${isDark(c) ? "none" : `0 0 8px ${c}`}"></i>`).join("")}</div>
-          ${ren === p.id ? "" : `<span>${esc(p.name)}</span>`}</button>
-        ${ren === p.id ? `<div class="row name"><input value="${esc(p.name)}" maxlength="28" data-act="name-input"><button class="chip pri" data-act="name-save">OK</button></div>` : ""}
-        <button class="dots" data-menu="${esc(p.id)}">\u22EF</button>
-        ${this._menu === p.id ? `<div class="menu">
-          <button data-pattern-act="edit" data-id="${esc(p.id)}">Load to paint</button>
-          <button data-pattern-act="overwrite" data-id="${esc(p.id)}">Update with current</button>
-          <button data-pattern-act="rename" data-id="${esc(p.id)}">Rename</button>
-          <button class="danger" data-pattern-act="delete" data-id="${esc(p.id)}">Delete</button></div>` : ""}
-      </div>`).join("");
-    return `<div class="grid">${tiles || `<p class="hint">No patterns yet. Paint something and save it.</p>`}</div>`;
-  }
-  _effectsTab(lib) {
-    if (this._editing) return this._effectEditor();
-    const tiles = lib.effects.map((fx) => `
-      <div class="tile ${lib.active?.kind === "effect" && lib.active.id === fx.id ? "act" : ""}">
-        <button class="hit" data-run-effect="${esc(fx.id)}">${fxStripHtml(fx, "t" + fx.id, this._n)}<span>${esc(fx.name)}</span><em>${FX_TYPES[fx.type] || esc(fx.type)}</em></button>
-        <button class="dots" data-menu="${esc(fx.id)}">\u22EF</button>
-        ${this._menu === fx.id ? `<div class="menu">
-          <button data-fx-act="edit" data-id="${esc(fx.id)}">Edit</button>
-          <button data-fx-act="dup" data-id="${esc(fx.id)}">Duplicate</button>
-          <button class="danger" data-fx-act="delete" data-id="${esc(fx.id)}">Delete</button></div>` : ""}
-      </div>`).join("");
-    return `<div class="grid">${tiles}</div><button class="wide pri" data-act="new-effect">\uFF0B New effect</button>`;
-  }
-  _effectEditor() {
-    const fx = this._editing, rainbow = fx.type.startsWith("rainbow");
-    return `<div class="editor">${fxStripHtml(fx, "edit", this._n, "main")}
-      <input class="namebox" value="${esc(fx.name)}" maxlength="28" placeholder="Effect name" data-ed="name">
-      <h4>Style</h4><div class="row">${Object.entries(FX_TYPES).map(([k, v]) => `<button class="chip ${fx.type === k ? "on" : ""}" data-ed-type="${k}">${v}</button>`).join("")}</div>
-      ${rainbow ? `<p class="hint">Rainbow styles use the strip's own colours.</p>` : `
-      <h4>Colours <small>${fx.colors.length}/8</small></h4>
-      <div class="swatches">${fx.colors.map((c, k) => `<span class="sw cur rm" style="background:${c}" data-ed-rm="${k}" title="Remove">\xD7</span>`).join("")}
-        ${fx.colors.length < 8 ? `<label class="sw custom" title="Add colour"><input type="color" value="#ff5500" data-ed="add"><span>\uFF0B</span></label>` : ""}</div>
-      <div class="swatches small">${SWATCHES.slice(0, 13).map((c) => `<button class="sw" style="background:${c}" data-ed-add="${c}"></button>`).join("")}</div>`}
-      <h4>Speed <small data-speed>${fx.speed}%</small></h4><input type="range" min="1" max="100" value="${fx.speed}" data-ed="speed">
-      <h4>Segments</h4><div class="row">${Object.entries(SEG_SETS).map(([k, v]) => `<button class="chip ${fx.segments === k ? "on" : ""}" data-ed-seg="${k}">${v}</button>`).join("")}</div>
-      ${fx.segments === "selected" ? `<p class="hint">Uses the segments selected in Paint (${(fx.selected || []).length}).</p>` : ""}
-      <div class="row end"><button class="chip" data-act="ed-cancel">Cancel</button>
-        <button class="chip" data-act="ed-try">\u25B6 Try on strip</button><button class="chip pri" data-act="ed-save">Save</button></div></div>`;
-  }
   /* ---------- events ---------- */
   _wire() {
-    const R = this.shadowRoot, q = (s) => R.querySelectorAll(s);
-    const find = (list, id) => list.find((x) => x.id === id);
+    const R = this.shadowRoot, q = (sel) => R.querySelectorAll(sel), s = this._s;
+    const find = (list2, id) => list2.find((x) => x.id === id);
     q("[data-tab]").forEach((b) => b.onclick = () => {
-      this._tab = b.dataset.tab;
-      this._menu = null;
-      this._naming = null;
+      s.tab = b.dataset.tab;
+      s.menu = null;
+      s.naming = null;
       this._render();
     });
     q("[data-act]").forEach((el) => {
@@ -511,12 +740,12 @@ var GlowStudioCard = class extends Base {
       else el.onclick = () => this._onAct(el.dataset.act);
     });
     q("[data-color]").forEach((b) => b.onclick = () => {
-      this._color = b.dataset.color;
+      s.color = b.dataset.color;
       this._colorPicked();
     });
     q("[data-menu]").forEach((b) => b.onclick = (e) => {
       e.stopPropagation();
-      this._menu = this._menu === b.dataset.menu ? null : b.dataset.menu;
+      s.menu = s.menu === b.dataset.menu ? null : b.dataset.menu;
       this._render();
     });
     q("[data-apply-pattern]").forEach((b) => b.onclick = () => {
@@ -530,25 +759,18 @@ var GlowStudioCard = class extends Base {
     q("[data-pattern-act]").forEach((b) => b.onclick = () => this._patternAct(b.dataset.patternAct, b.dataset.id));
     q("[data-fx-act]").forEach((b) => b.onclick = () => this._fxAct(b.dataset.fxAct, b.dataset.id));
     q("[data-ed]").forEach((el) => el.oninput = el.onchange = (e) => this._edInput(el.dataset.ed, e));
-    q("[data-ed-type]").forEach((b) => b.onclick = () => {
-      this._editing.type = b.dataset.edType;
-      this._render();
-    });
+    q("[data-ed-type]").forEach((b) => b.onclick = () => this._setStyle(b.dataset.edType));
+    q("[data-ed-type-select]").forEach((el) => el.onchange = () => this._setStyle(el.value));
     q("[data-ed-seg]").forEach((b) => b.onclick = () => {
-      this._editing.segments = b.dataset.edSeg;
-      this._editing.selected = [...this._sel];
+      s.editing.segments = b.dataset.edSeg;
+      s.editing.selected = [...s.sel];
       this._render();
     });
     q("[data-ed-rm]").forEach((b) => b.onclick = () => {
-      this._editing.colors.splice(Number(b.dataset.edRm), 1);
+      s.editing.colors.splice(Number(b.dataset.edRm), 1);
       this._render();
     });
-    q("[data-ed-add]").forEach((b) => b.onclick = () => {
-      if (this._editing.colors.length < 8) {
-        this._editing.colors.push(b.dataset.edAdd);
-        this._render();
-      }
-    });
+    q("[data-ed-add]").forEach((b) => b.onclick = () => this._addColour(b.dataset.edAdd));
     this._wireStrip();
     const ni = R.querySelector('[data-act="name-input"]');
     if (ni) {
@@ -562,6 +784,7 @@ var GlowStudioCard = class extends Base {
     const strip = this.shadowRoot.querySelector(".main.strip");
     if (!strip?.querySelector("[data-seg]")) return;
     let down = false, pressT = null, last = -1;
+    const sel = this._s.sel;
     const segAt = (e) => {
       const el = this.shadowRoot.elementFromPoint(e.clientX, e.clientY);
       return el?.dataset?.seg !== void 0 ? Number(el.dataset.seg) : -1;
@@ -580,7 +803,7 @@ var GlowStudioCard = class extends Base {
       pressT = setTimeout(() => {
         pressT = null;
         end();
-        this._sel.has(i) ? this._sel.delete(i) : this._sel.add(i);
+        sel.has(i) ? sel.delete(i) : sel.add(i);
         this._render();
       }, 450);
     };
@@ -601,9 +824,9 @@ var GlowStudioCard = class extends Base {
       if (pressT) {
         clearTimeout(pressT);
         pressT = null;
-        if (this._sel.has(last)) {
-          this._sel.forEach((k) => {
-            this._paint[k] = this._color;
+        if (sel.has(last)) {
+          sel.forEach((k) => {
+            this._paint[k] = this._s.color;
           });
           this._updateStrip();
           this._sendPaint(this._paint);
@@ -620,10 +843,11 @@ var GlowStudioCard = class extends Base {
     };
   }
   _colorPicked() {
-    if (this._sel.size) {
-      this._sel.forEach((k) => {
-        this._paint[k] = this._color;
-        if (this._mirror) this._paint[this._n - 1 - k] = this._color;
+    const s = this._s;
+    if (s.sel.size) {
+      s.sel.forEach((k) => {
+        this._paint[k] = s.color;
+        if (s.mirror) this._paint[this._n - 1 - k] = s.color;
       });
       this._sendPaint(this._paint);
     }
@@ -631,83 +855,101 @@ var GlowStudioCard = class extends Base {
   }
   _onInput(act, e) {
     if (act === "pick") {
-      this._color = e.target.value;
+      this._s.color = e.target.value;
       if (e.type === "change") this._colorPicked();
     }
     if (act === "bri" && e.type === "change") this._hass.callService("light", "turn_on", { entity_id: this._cfg.entity, brightness_pct: Number(e.target.value) });
     if (act === "name-input") this._nameDraft = e.target.value;
   }
   async _onAct(act) {
-    const n = this._n;
+    const n = this._n, s = this._s;
+    const first = () => this._driver.styles(this._ctx)[0];
     const actions = {
       power: () => this._hass.callService("light", "toggle", { entity_id: this._cfg.entity }),
       stop: () => this._stop(),
       mirror: () => {
-        this._mirror = !this._mirror;
+        s.mirror = !s.mirror;
         this._render();
       },
       fill: () => {
-        this._paint = Array(n).fill(this._color);
+        this._paint = Array(n).fill(s.color);
         this._render();
         this._sendPaint(this._paint, 0);
       },
       blend: () => this._blend(),
       selall: () => {
-        this._sel = /* @__PURE__ */ new Set([...Array(n).keys()]);
+        s.sel = /* @__PURE__ */ new Set([...Array(n).keys()]);
         this._render();
       },
       selnone: () => {
-        this._sel.clear();
+        s.sel.clear();
         this._render();
       },
       "save-pattern": () => {
-        this._naming = { kind: "pattern-new" };
+        s.naming = { kind: "pattern-new" };
         this._nameDraft = "";
         this._render();
       },
       "name-cancel": () => {
-        this._naming = null;
+        s.naming = null;
         this._render();
       },
       "name-save": () => this._saveName(),
       "new-effect": () => {
-        this._editing = { id: null, name: "My effect", type: "flicker", colors: ["#ff3a00", "#ff9500"], speed: 50, segments: "all" };
+        const type = first()?.id;
+        if (!type) return;
+        const max = styleInfo(this._driver, this._ctx, type).colors;
+        s.editing = { id: null, name: "My effect", type, colors: ["#ff3a00", "#ff9500"].slice(0, max), speed: 50, segments: "all" };
         this._render();
       },
       "ed-cancel": () => {
-        this._editing = null;
+        s.editing = null;
         this._render();
       },
-      "ed-try": () => this._runEffect(this._editing, false),
+      "ed-try": () => this._runEffect(s.editing, false),
       "ed-save": () => this._saveEffect()
     };
     await actions[act]?.();
   }
+  _setStyle(type) {
+    const fx = this._s.editing;
+    fx.type = type;
+    const max = styleInfo(this._driver, this._ctx, type).colors;
+    if (fx.colors.length > max) fx.colors = fx.colors.slice(0, max);
+    this._render();
+  }
+  _addColour(c) {
+    const fx = this._s.editing;
+    if (fx.colors.length < styleInfo(this._driver, this._ctx, fx.type).colors) {
+      fx.colors.push(c);
+      this._render();
+    }
+  }
   async _saveName() {
-    const name = (this._nameDraft || "").trim() || "Untitled";
+    const s = this._s, name = (this._nameDraft || "").trim() || "Untitled";
     const lib = this._lib();
-    if (this._naming?.kind === "pattern-new") lib.patterns.push({ id: uid(), name, colors: [...this._paint] });
-    if (this._naming?.kind === "pattern-rename") {
-      const p = lib.patterns.find((x) => x.id === this._naming.id);
+    if (s.naming?.kind === "pattern-new") lib.patterns.push({ id: uid(), name, colors: [...this._paint] });
+    if (s.naming?.kind === "pattern-rename") {
+      const p = lib.patterns.find((x) => x.id === s.naming.id);
       if (p) p.name = name;
     }
-    this._naming = null;
-    this._menu = null;
-    if (this._tab === "paint") this._tab = "patterns";
+    s.naming = null;
+    s.menu = null;
+    if (s.tab === "paint") s.tab = "patterns";
     await this._saveLib(lib);
   }
   async _patternAct(act, id) {
-    const lib = this._lib(), p = lib.patterns.find((x) => x.id === id);
+    const s = this._s, lib = this._lib(), p = lib.patterns.find((x) => x.id === id);
     if (!p) return;
-    this._menu = null;
+    s.menu = null;
     if (act === "edit") {
       this._paint = scaleColors(p.colors, this._n);
-      this._tab = "paint";
+      s.tab = "paint";
       this._render();
       return;
     }
     if (act === "rename") {
-      this._naming = { kind: "pattern-rename", id };
+      s.naming = { kind: "pattern-rename", id };
       this._nameDraft = p.name;
       this._render();
       return;
@@ -723,11 +965,11 @@ var GlowStudioCard = class extends Base {
     await this._saveLib(lib);
   }
   async _fxAct(act, id) {
-    const lib = this._lib(), fx = lib.effects.find((x) => x.id === id);
+    const s = this._s, lib = this._lib(), fx = lib.effects.find((x) => x.id === id);
     if (!fx) return;
-    this._menu = null;
+    s.menu = null;
     if (act === "edit") {
-      this._editing = JSON.parse(JSON.stringify(fx));
+      s.editing = JSON.parse(JSON.stringify(fx));
       this._render();
       return;
     }
@@ -742,7 +984,7 @@ var GlowStudioCard = class extends Base {
     await this._saveLib(lib);
   }
   _edInput(key, e) {
-    const fx = this._editing;
+    const fx = this._s.editing;
     if (key === "name") fx.name = e.target.value;
     if (key === "speed") {
       fx.speed = Number(e.target.value);
@@ -750,20 +992,17 @@ var GlowStudioCard = class extends Base {
       if (lbl) lbl.textContent = `${fx.speed}%`;
       if (e.type === "change") this._render();
     }
-    if (key === "add" && e.type === "change" && fx.colors.length < 8) {
-      fx.colors.push(e.target.value);
-      this._render();
-    }
+    if (key === "add" && e.type === "change") this._addColour(e.target.value);
   }
   async _saveEffect() {
-    const fx = this._editing, lib = this._lib();
+    const s = this._s, fx = s.editing, lib = this._lib();
     fx.name = (fx.name || "").trim() || "My effect";
     if (fx.id) lib.effects = lib.effects.map((x) => x.id === fx.id ? fx : x);
     else {
       fx.id = uid();
       lib.effects.push(fx);
     }
-    this._editing = null;
+    s.editing = null;
     await this._saveLib(lib);
   }
 };
@@ -771,18 +1010,30 @@ var GlowStudioCard = class extends Base {
 // src/editor.js
 var Base2 = typeof HTMLElement !== "undefined" ? HTMLElement : class {
 };
-var SCHEMA = [
-  { name: "entity", required: true, selector: { entity: { domain: "light" } } },
-  { name: "title", selector: { text: {} } },
-  { name: "z2m_topic", selector: { text: {} } },
-  { name: "segments", selector: { number: { min: 1, max: 50, mode: "box" } } }
-];
 var LABELS = {
-  entity: "Strip light",
+  entity: "Light",
+  driver: "Strip type",
   title: "Title (optional)",
   z2m_topic: "Zigbee2MQTT set topic (optional, auto-detected)",
-  segments: "Segments (optional, auto-detected: 5 per metre)"
+  segments: "Segments (optional, auto-detected where possible)",
+  wled_topic: "WLED MQTT device topic (e.g. wled/bedroom)",
+  leds: "Total LEDs (optional, auto-detected)",
+  segment_entities: "Segment lights, in order along the strip"
 };
+function editorSchema(config, hass) {
+  const driver = pickDriver(hass || {}, { ...config, entity: config.entity || config.light });
+  const id = config.driver && config.driver !== "auto" ? config.driver : driver?.id;
+  const schema = [
+    { name: "entity", required: true, selector: { entity: { domain: "light" } } },
+    { name: "driver", selector: { select: { mode: "dropdown", options: [{ value: "auto", label: `Auto-detect${driver ? ` (${driver.label})` : ""}` }, ...DRIVER_OPTIONS] } } },
+    { name: "title", selector: { text: {} } }
+  ];
+  if (["aqara_t1", "aqara_t1m", "hue_gradient"].includes(id)) schema.push({ name: "z2m_topic", selector: { text: {} } });
+  if (id === "wled") schema.push({ name: "wled_topic", selector: { text: {} } }, { name: "leds", selector: { number: { min: 1, max: 2e3, mode: "box" } } });
+  if (id === "segment_lights" || !id) schema.push({ name: "segment_entities", selector: { entity: { domain: "light", multiple: true } } });
+  if (id !== "segment_lights") schema.push({ name: "segments", selector: { number: { min: 1, max: 100, mode: "box" } } });
+  return schema;
+}
 var GlowStudioCardEditor = class extends Base2 {
   setConfig(config) {
     this._config = config;
@@ -799,26 +1050,29 @@ var GlowStudioCardEditor = class extends Base2 {
       this._form.computeLabel = (s) => LABELS[s.name] || s.name;
       this._form.addEventListener("value-changed", (e) => {
         const config = { ...e.detail.value };
-        Object.keys(config).forEach((k) => (config[k] === "" || config[k] === void 0) && delete config[k]);
+        Object.keys(config).forEach((k) => {
+          const v = config[k];
+          if (v === "" || v === void 0 || Array.isArray(v) && !v.length || k === "driver" && v === "auto") delete config[k];
+        });
         this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
       });
       this.appendChild(this._form);
     }
     this._form.hass = this._hass;
-    this._form.schema = SCHEMA;
-    this._form.data = { ...this._config, entity: this._config.entity || this._config.light };
+    this._form.schema = editorSchema(this._config, this._hass);
+    this._form.data = { driver: "auto", ...this._config, entity: this._config.entity || this._config.light };
   }
 };
 
 // src/index.js
-var VERSION = "1.1.0";
+var VERSION = "2.0.0";
 if (!customElements.get("glow-studio-card")) customElements.define("glow-studio-card", GlowStudioCard);
 if (!customElements.get("glow-studio-card-editor")) customElements.define("glow-studio-card-editor", GlowStudioCardEditor);
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "glow-studio-card",
   name: "Glow Studio",
-  description: "Paint segments, save patterns and run hardware effects on an Aqara T1 LED strip (Zigbee2MQTT).",
+  description: "Paint segments, save patterns and run hardware effects on addressable LED strips: Aqara T1/T1M, Hue gradient, WLED or any segment lights.",
   preview: false,
   documentationURL: "https://github.com/danish-din/glow-studio-card"
 });
