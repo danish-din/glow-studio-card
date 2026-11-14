@@ -74,7 +74,8 @@ export function effectEditor(s, driver, ctx, n) {
     ${info.minutes ? `<h4>One full cycle takes</h4><div class="row">${[5, 15, 30, 60, 120].map((m) =>
         `<button class="chip ${driftMinutes(fx) === m ? "on" : ""}" data-ed-min="${m}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>
       <p class="hint">Runs in Home Assistant, so it can change as slowly as you like.</p>` : ""}
-    ${info.speed ? `<h4>Speed <small data-speed>${fx.speed}%</small></h4><input type="range" min="1" max="100" value="${fx.speed}" data-ed="speed">` : ""}
+    ${info.speed ? `<h4>Speed <small data-speed>${fx.speed}%</small></h4><input type="range" min="1" max="100" value="${fx.speed}" data-ed="speed">
+      ${slowChips("data-ed-slow")}` : ""}
     ${info.segments ? `<h4>Segments</h4><div class="row">${Object.entries(SEG_SETS).map(([k, v]) => `<button class="chip ${fx.segments === k ? "on" : ""}" data-ed-seg="${k}">${v}</button>`).join("")}</div>
       ${fx.segments === "selected" ? `<p class="hint">Uses the segments selected in Paint (${(fx.selected || []).length}).</p>` : ""}` : ""}
     <div class="row end"><button class="chip" data-act="ed-cancel">Cancel</button>
@@ -88,5 +89,12 @@ export function speedBar(fx, info, minuteChoices) {
       `<button class="chip ${driftMinutes(fx) === m ? "on" : ""}" data-fx-min="${m}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>`;
   }
   if (!info.speed) return "";
-  return `<label class="bri speedbar"><span title="Effect speed">⏱</span><input type="range" min="1" max="100" value="${Number(fx.speed) || 50}" data-fx-speed><b data-fx-speed-label>${Number(fx.speed) || 50}%</b></label>`;
+  return `<label class="bri speedbar"><span title="Effect speed">⏱</span><input type="range" min="1" max="100" value="${Number(fx.speed) || 50}" data-fx-speed><b data-fx-speed-label>${Number(fx.speed) || 50}%</b></label>
+    ${slowChips("data-fx-slow", minuteChoices)}`;
+}
+
+/** "Slower than the strip can go": turns a hardware effect into its slow (Home Assistant driven) version. */
+function slowChips(attr, choices = [5, 15, 30, 60, 120]) {
+  return `<div class="row slower"><span class="hint">Slower:</span>${choices.map((m) =>
+    `<button class="chip" ${attr}="${m}" title="Change over ${m < 60 ? `${m} minutes` : `${m / 60} hour${m > 60 ? "s" : ""}`}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>`;
 }

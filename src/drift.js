@@ -19,6 +19,23 @@ export const DRIFT_DEFAULTS = [
   ["Calm night", "drift", ["#1a0a40", "#2a1a6e", "#0a2a5a", "#3a1255"], 60],
 ];
 
+const SLOW_RAINBOW = ["#ff0000", "#ffd000", "#00ff6a", "#0080ff", "#b000ff"];
+
+/**
+ * The slow version of a hardware effect, used when the user asks for "slower than the strip can go":
+ * travelling styles (chase, dash, flows) become Slow flow; everything else a whole-strip Slow drift.
+ * Keeps the effect's id, name and colours.
+ */
+export function slowEquivalent(fx, minutes) {
+  if (isDrift(fx.type)) return { ...fx, minutes };
+  const travels = /chas|dash|flow|rainbow2|roll|wave|run|scan|comet|meteor|wipe/i.test(fx.type);
+  const rainbow = /rainbow|colou?r ?loop/i.test(fx.type);
+  const colors = fx.colors?.length >= 2 ? fx.colors
+    : fx.colors?.length === 1 ? [fx.colors[0], "#000000"]
+    : rainbow ? SLOW_RAINBOW : ["#ff5500", "#8200dc"];
+  return { ...fx, type: travels ? "drift_flow" : "drift", colors: colors.slice(0, 8), minutes };
+}
+
 /** Minutes for one full colour cycle (stored on the effect; older effects fall back to 30). */
 export const driftMinutes = (fx) => Math.max(1, Math.min(240, Number(fx.minutes) || 30));
 

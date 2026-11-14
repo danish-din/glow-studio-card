@@ -56,4 +56,5 @@ nav button.act{background:rgba(255,255,255,.1);color:var(--ss-text);box-shadow:i
 .setup{text-align:center;padding:10px 4px;position:relative;z-index:1}.setup p{color:var(--ss-mute);margin:6px 0 14px}
 .warn{color:#ffb347;font-size:.85em;margin:8px 2px}
 .speedbar{margin:10px 2px 0}.row.speedbar{align-items:center;gap:6px}.row.speedbar .hint{margin:0 4px 0 0}
+.row.slower{align-items:center;gap:6px;margin:8px 0 0}.row.slower .hint{margin:0 2px 0 0}.row.slower .chip{padding:5px 10px;font-size:.8em}
 `;

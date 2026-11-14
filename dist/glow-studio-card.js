@@ -203,6 +203,7 @@ nav button.act{background:rgba(255,255,255,.1);color:var(--ss-text);box-shadow:i
 .setup{text-align:center;padding:10px 4px;position:relative;z-index:1}.setup p{color:var(--ss-mute);margin:6px 0 14px}
 .warn{color:#ffb347;font-size:.85em;margin:8px 2px}
 .speedbar{margin:10px 2px 0}.row.speedbar{align-items:center;gap:6px}.row.speedbar .hint{margin:0 4px 0 0}
+.row.slower{align-items:center;gap:6px;margin:8px 0 0}.row.slower .hint{margin:0 2px 0 0}.row.slower .chip{padding:5px 10px;font-size:.8em}
 `;
 
 // src/drivers/zigbee2mqtt.js
@@ -463,6 +464,14 @@ var DRIFT_DEFAULTS = [
   ["Ember drift", "drift", ["#ff3a00", "#b31b00", "#ff8c1a", "#7a0f00"], 15],
   ["Calm night", "drift", ["#1a0a40", "#2a1a6e", "#0a2a5a", "#3a1255"], 60]
 ];
+var SLOW_RAINBOW = ["#ff0000", "#ffd000", "#00ff6a", "#0080ff", "#b000ff"];
+function slowEquivalent(fx, minutes) {
+  if (isDrift(fx.type)) return { ...fx, minutes };
+  const travels = /chas|dash|flow|rainbow2|roll|wave|run|scan|comet|meteor|wipe/i.test(fx.type);
+  const rainbow = /rainbow|colou?r ?loop/i.test(fx.type);
+  const colors = fx.colors?.length >= 2 ? fx.colors : fx.colors?.length === 1 ? [fx.colors[0], "#000000"] : rainbow ? SLOW_RAINBOW : ["#ff5500", "#8200dc"];
+  return { ...fx, type: travels ? "drift_flow" : "drift", colors: colors.slice(0, 8), minutes };
+}
 var driftMinutes = (fx) => Math.max(1, Math.min(240, Number(fx.minutes) || 30));
 function driftVariables(driver, ctx, fx, segments) {
   const base = {
@@ -552,7 +561,8 @@ function effectEditor(s, driver, ctx, n) {
     ${colours}
     ${info.minutes ? `<h4>One full cycle takes</h4><div class="row">${[5, 15, 30, 60, 120].map((m) => `<button class="chip ${driftMinutes(fx) === m ? "on" : ""}" data-ed-min="${m}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>
       <p class="hint">Runs in Home Assistant, so it can change as slowly as you like.</p>` : ""}
-    ${info.speed ? `<h4>Speed <small data-speed>${fx.speed}%</small></h4><input type="range" min="1" max="100" value="${fx.speed}" data-ed="speed">` : ""}
+    ${info.speed ? `<h4>Speed <small data-speed>${fx.speed}%</small></h4><input type="range" min="1" max="100" value="${fx.speed}" data-ed="speed">
+      ${slowChips("data-ed-slow")}` : ""}
     ${info.segments ? `<h4>Segments</h4><div class="row">${Object.entries(SEG_SETS).map(([k, v]) => `<button class="chip ${fx.segments === k ? "on" : ""}" data-ed-seg="${k}">${v}</button>`).join("")}</div>
       ${fx.segments === "selected" ? `<p class="hint">Uses the segments selected in Paint (${(fx.selected || []).length}).</p>` : ""}` : ""}
     <div class="row end"><button class="chip" data-act="ed-cancel">Cancel</button>
@@ -563,7 +573,11 @@ function speedBar(fx, info, minuteChoices) {
     return `<div class="row speedbar"><span class="hint">Cycle</span>${minuteChoices.map((m) => `<button class="chip ${driftMinutes(fx) === m ? "on" : ""}" data-fx-min="${m}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>`;
   }
   if (!info.speed) return "";
-  return `<label class="bri speedbar"><span title="Effect speed">\u23F1</span><input type="range" min="1" max="100" value="${Number(fx.speed) || 50}" data-fx-speed><b data-fx-speed-label>${Number(fx.speed) || 50}%</b></label>`;
+  return `<label class="bri speedbar"><span title="Effect speed">\u23F1</span><input type="range" min="1" max="100" value="${Number(fx.speed) || 50}" data-fx-speed><b data-fx-speed-label>${Number(fx.speed) || 50}%</b></label>
+    ${slowChips("data-fx-slow", minuteChoices)}`;
+}
+function slowChips(attr, choices = [5, 15, 30, 60, 120]) {
+  return `<div class="row slower"><span class="hint">Slower:</span>${choices.map((m) => `<button class="chip" ${attr}="${m}" title="Change over ${m < 60 ? `${m} minutes` : `${m / 60} hour${m > 60 ? "s" : ""}`}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>`;
 }
 
 // src/card.js
@@ -740,6 +754,17 @@ var GlowStudioCard = class extends Base {
       await this._saveLib(lib);
     });
   }
+  /** Running hardware effect → its slow version (same name/colours), saved and restarted via the drift script. */
+  async _makeSlow(minutes) {
+    const lib = this._lib();
+    const i = lib.effects.findIndex((e) => e.id === lib.active?.id);
+    if (i < 0) return;
+    lib.effects[i] = slowEquivalent(lib.effects[i], minutes);
+    await this._guard(async () => {
+      await this._runEffect(lib.effects[i], false);
+      if (!this._error) await this._saveLib(lib);
+    });
+  }
   async _stop() {
     this._sendPaint(this._paint, 0);
     const lib = this._lib();
@@ -857,6 +882,11 @@ var GlowStudioCard = class extends Base {
       this._render();
     });
     q("[data-fx-min]").forEach((b) => b.onclick = () => this._changeSpeed({ minutes: Number(b.dataset.fxMin) }));
+    q("[data-fx-slow]").forEach((b) => b.onclick = () => this._makeSlow(Number(b.dataset.fxSlow)));
+    q("[data-ed-slow]").forEach((b) => b.onclick = () => {
+      s.editing = slowEquivalent(s.editing, Number(b.dataset.edSlow));
+      this._render();
+    });
     q("[data-fx-speed]").forEach((el) => {
       el.oninput = () => {
         const l = R.querySelector("[data-fx-speed-label]");

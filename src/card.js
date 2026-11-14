@@ -5,7 +5,7 @@ import { defaultLibrary } from "./defaults.js";
 import { fxStripHtml } from "./preview.js";
 import { STYLES } from "./styles.js";
 import { pickDriver, styleInfo, allStyles } from "./drivers/index.js";
-import { DRIFT_SCRIPT, DRIFT_DEFAULTS, MINUTE_CHOICES, isDrift, driftVariables } from "./drift.js";
+import { DRIFT_SCRIPT, DRIFT_DEFAULTS, MINUTE_CHOICES, isDrift, driftVariables, slowEquivalent } from "./drift.js";
 import { paintTab, patternsTab, effectsTab, speedBar } from "./views.js";
 
 const Base = typeof HTMLElement !== "undefined" ? HTMLElement : class {};
@@ -142,6 +142,16 @@ export class GlowStudioCard extends Base {
       await this._saveLib(lib);
     });
   }
+  /** Running hardware effect → its slow version (same name/colours), saved and restarted via the drift script. */
+  async _makeSlow(minutes) {
+    const lib = this._lib();
+    const i = lib.effects.findIndex((e) => e.id === lib.active?.id); if (i < 0) return;
+    lib.effects[i] = slowEquivalent(lib.effects[i], minutes);
+    await this._guard(async () => {
+      await this._runEffect(lib.effects[i], false);
+      if (!this._error) await this._saveLib(lib);
+    });
+  }
   async _stop() {
     this._sendPaint(this._paint, 0);
     const lib = this._lib(); lib.active = { kind: "pattern", id: null, name: "Custom" }; await this._saveLib(lib);
@@ -228,6 +238,8 @@ export class GlowStudioCard extends Base {
     q("[data-ed-add]").forEach((b) => (b.onclick = () => this._addColour(b.dataset.edAdd)));
     q("[data-ed-min]").forEach((b) => (b.onclick = () => { s.editing.minutes = Number(b.dataset.edMin); this._render(); }));
     q("[data-fx-min]").forEach((b) => (b.onclick = () => this._changeSpeed({ minutes: Number(b.dataset.fxMin) })));
+    q("[data-fx-slow]").forEach((b) => (b.onclick = () => this._makeSlow(Number(b.dataset.fxSlow))));
+    q("[data-ed-slow]").forEach((b) => (b.onclick = () => { s.editing = slowEquivalent(s.editing, Number(b.dataset.edSlow)); this._render(); }));
     q("[data-fx-speed]").forEach((el) => {
       el.oninput = () => { const l = R.querySelector("[data-fx-speed-label]"); if (l) l.textContent = `${el.value}%`; };
       el.onchange = () => this._changeSpeed({ speed: Number(el.value) });

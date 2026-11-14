@@ -149,3 +149,39 @@ test("setup adds the slow starters to the library", async () => {
   assert.equal(slow.length, DRIFT_DEFAULTS.length);
   assert.ok(slow.every((e) => e.minutes >= 5));
 });
+
+test("slowEquivalent: travelling styles flow, others drift; keeps id, name and colours", async () => {
+  const { slowEquivalent } = await import("../src/drift.js");
+  const candle = { id: "e1", name: "Candlelight", type: "flicker", colors: ["#ff8c1a", "#ffb04d"], speed: 1 };
+  assert.deepEqual(slowEquivalent(candle, 30), { ...candle, type: "drift", minutes: 30 });
+  assert.equal(slowEquivalent({ type: "chasing", colors: ["#000000", "#ffffff"] }, 5).type, "drift_flow");
+  assert.equal(slowEquivalent({ type: "Pacifica", colors: [] }, 5).type, "drift");
+  assert.equal(slowEquivalent({ type: "rainbow2", colors: [] }, 60).colors.length, 5, "rainbow gets a rainbow palette");
+  assert.deepEqual(slowEquivalent({ type: "breathing", colors: ["#ff0022"] }, 15).colors, ["#ff0022", "#000000"], "one colour breathes to dark");
+  assert.deepEqual(slowEquivalent({ type: "drift_flow", minutes: 5 }, 120), { type: "drift_flow", minutes: 120 });
+});
+
+test("speed bar and editor offer 'Slower' minutes for hardware effects", () => {
+  const html = speedBar({ speed: 1 }, { speed: true, minutes: false }, [5, 30]);
+  assert.match(html, /Slower:/);
+  assert.match(html, /data-fx-slow="30"/);
+});
+
+test("making a running effect slow converts and saves it, then starts the drift script", async () => {
+  const { c, calls, lib } = mkCard({ scriptState: "off" });
+  lib.active = { kind: "effect", id: "e1", name: "Candlelight" };
+  await c._makeSlow(30);
+  const run = calls.find((x) => x.domain === "script" && x.service === "turn_on");
+  assert.equal(run.data.variables.minutes, 30);
+  assert.deepEqual(run.data.variables.colors, ["#ff8c1a", "#ffb04d", "#ff7a00"]);
+  const saved = JSON.parse(calls.at(-1).data.payload).effects.find((e) => e.id === "e1");
+  assert.deepEqual([saved.name, saved.type, saved.minutes], ["Candlelight", "drift", 30]);
+});
+
+test("without the drift script, making slow reports it and leaves the library alone", async () => {
+  const { c, calls, lib } = mkCard();
+  lib.active = { kind: "effect", id: "e1", name: "Candlelight" };
+  await c._makeSlow(30);
+  assert.match(c._error, /drift script/);
+  assert.ok(!calls.some((x) => x.data?.topic?.endsWith("/library")));
+});
