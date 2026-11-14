@@ -3,7 +3,7 @@ import { esc, isDark } from "./helpers.js";
 import { SWATCHES, SEG_SETS } from "./defaults.js";
 import { fxStripHtml } from "./preview.js";
 import { styleInfo, allStyles } from "./drivers/index.js";
-import { driftMinutes } from "./drift.js";
+import { isDrift, sliderFor, speedLabel } from "./drift.js";
 
 const MENU_PATTERN = [["edit", "Load to paint"], ["overwrite", "Update with current"], ["rename", "Rename"], ["delete", "Delete"]];
 const MENU_FX = [["edit", "Edit"], ["dup", "Duplicate"], ["delete", "Delete"]];
@@ -67,34 +67,23 @@ export function effectEditor(s, driver, ctx, n) {
       ${fx.colors.length < info.colors ? `<label class="sw custom" title="Add colour"><input type="color" value="#ff5500" data-ed="add"><span>＋</span></label>` : ""}</div>
     <div class="swatches small">${SWATCHES.slice(0, 13).map((c) => `<button class="sw" style="background:${c}" data-ed-add="${c}"></button>`).join("")}</div>`
     : `<p class="hint">This style uses the light's own colours.</p>`;
-  return `<div class="editor">${fxStripHtml(fx, "edit", n, "main")}
+  return `<div class="editor">
+    <div class="editbanner">✏️ Editing <b>${esc(fx.name || "new effect")}</b><span>Changes apply when you tap Save (or ▶ Try it).</span></div>
+    <h4>Preview</h4>${fxStripHtml(fx, "edit", n, "main")}
     <input class="namebox" value="${esc(fx.name)}" maxlength="28" placeholder="Effect name" data-ed="name">
-    <h4>Style</h4>${styleChooser(allStyles(driver, ctx), fx.type)}
+    <h4>Style</h4>${styleChooser(allStyles(driver, ctx), fx.hwType || fx.type)}
     ${colours}
-    ${info.minutes ? `<h4>One full cycle takes</h4><div class="row">${[5, 15, 30, 60, 120].map((m) =>
-        `<button class="chip ${driftMinutes(fx) === m ? "on" : ""}" data-ed-min="${m}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>
-      <p class="hint">Runs in Home Assistant, so it can change as slowly as you like.</p>` : ""}
-    ${info.speed ? `<h4>Speed <small data-speed>${fx.speed}%</small></h4><input type="range" min="1" max="100" value="${fx.speed}" data-ed="speed">
-      ${slowChips("data-ed-slow")}` : ""}
+    ${info.speed || isDrift(fx.type) ? `<h4>Speed <small data-speed>${speedLabel(fx)}</small></h4>
+      <input type="range" min="1" max="100" value="${sliderFor(fx)}" data-ed="speed">
+      <p class="hint">Below 30% is slower than the strip can go: Home Assistant takes over, down to a 2-hour cycle.</p>` : ""}
     ${info.segments ? `<h4>Segments</h4><div class="row">${Object.entries(SEG_SETS).map(([k, v]) => `<button class="chip ${fx.segments === k ? "on" : ""}" data-ed-seg="${k}">${v}</button>`).join("")}</div>
       ${fx.segments === "selected" ? `<p class="hint">Uses the segments selected in Paint (${(fx.selected || []).length}).</p>` : ""}` : ""}
     <div class="row end"><button class="chip" data-act="ed-cancel">Cancel</button>
       <button class="chip" data-act="ed-try">▶ Try it</button><button class="chip pri" data-act="ed-save">Save</button></div></div>`;
 }
 
-/** Quick speed control shown under the strip while an effect runs. */
-export function speedBar(fx, info, minuteChoices) {
-  if (info.minutes) {
-    return `<div class="row speedbar"><span class="hint">Cycle</span>${minuteChoices.map((m) =>
-      `<button class="chip ${driftMinutes(fx) === m ? "on" : ""}" data-fx-min="${m}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>`;
-  }
-  if (!info.speed) return "";
-  return `<label class="bri speedbar"><span title="Effect speed">⏱</span><input type="range" min="1" max="100" value="${Number(fx.speed) || 50}" data-fx-speed><b data-fx-speed-label>${Number(fx.speed) || 50}%</b></label>
-    ${slowChips("data-fx-slow", minuteChoices)}`;
-}
-
-/** "Slower than the strip can go": turns a hardware effect into its slow (Home Assistant driven) version. */
-function slowChips(attr, choices = [5, 15, 30, 60, 120]) {
-  return `<div class="row slower"><span class="hint">Slower:</span>${choices.map((m) =>
-    `<button class="chip" ${attr}="${m}" title="Change over ${m < 60 ? `${m} minutes` : `${m / 60} hour${m > 60 ? "s" : ""}`}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>`;
+/** Quick speed control shown under the strip while an effect runs (one slider; below 30% = slow mode). */
+export function speedBar(fx, info) {
+  if (!info.speed && !isDrift(fx.type)) return "";
+  return `<label class="bri speedbar"><span title="Effect speed">⏱</span><input type="range" min="1" max="100" value="${sliderFor(fx)}" data-fx-speed><b data-fx-speed-label>${speedLabel(fx)}</b></label>`;
 }

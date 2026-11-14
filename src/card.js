@@ -5,7 +5,7 @@ import { defaultLibrary } from "./defaults.js";
 import { fxStripHtml } from "./preview.js";
 import { STYLES } from "./styles.js";
 import { pickDriver, styleInfo, allStyles } from "./drivers/index.js";
-import { DRIFT_SCRIPT, DRIFT_DEFAULTS, MINUTE_CHOICES, isDrift, driftVariables, slowEquivalent } from "./drift.js";
+import { DRIFT_SCRIPT, DRIFT_DEFAULTS, isDrift, driftVariables, applySlider, speedLabel } from "./drift.js";
 import { paintTab, patternsTab, effectsTab, speedBar } from "./views.js";
 
 const Base = typeof HTMLElement !== "undefined" ? HTMLElement : class {};
@@ -131,24 +131,15 @@ export class GlowStudioCard extends Base {
       await this._hass.callService("script", "turn_off", { entity_id: this._cfg.drift_script });
     }
   }
-  /** Quick speed change for the running effect (hardware speed, or cycle minutes for slow effects). */
-  async _changeSpeed(patch) {
-    const lib = this._lib();
-    const fx = lib.effects.find((e) => e.id === lib.active?.id); if (!fx) return;
-    Object.assign(fx, patch);
-    await this._guard(async () => {
-      if (isDrift(fx.type)) await this._runEffect(fx, false);
-      else await this._driver.setSpeed(this._ctx, fx);
-      await this._saveLib(lib);
-    });
-  }
-  /** Running hardware effect → its slow version (same name/colours), saved and restarted via the drift script. */
-  async _makeSlow(minutes) {
+  /** Speed slider moved for the running effect: strip speed above 30%, slow (Home Assistant) mode below. */
+  async _changeSpeed(v) {
     const lib = this._lib();
     const i = lib.effects.findIndex((e) => e.id === lib.active?.id); if (i < 0) return;
-    lib.effects[i] = slowEquivalent(lib.effects[i], minutes);
+    const before = lib.effects[i], after = applySlider(before, v);
+    lib.effects[i] = after;
     await this._guard(async () => {
-      await this._runEffect(lib.effects[i], false);
+      if (isDrift(after.type) || isDrift(before.type) !== isDrift(after.type)) await this._runEffect(after, false);
+      else await this._driver.setSpeed(this._ctx, after);
       if (!this._error) await this._saveLib(lib);
     });
   }
@@ -194,7 +185,8 @@ export class GlowStudioCard extends Base {
     const on = this._light.state === "on", s = this._s, ctx = this._ctx;
     const bri = Math.round((this._light.attributes?.brightness || 0) / 2.55);
     const fxActive = lib.active?.kind === "effect" ? lib.effects.find((e) => e.id === lib.active.id) : null;
-    const strip = fxActive && on && s.tab !== "paint" ? fxStripHtml(fxActive, "main", this._n, "main")
+    const editing = s.tab === "effects" && s.editing;
+    const strip = editing ? "" : fxActive && on && s.tab !== "paint" ? fxStripHtml(fxActive, "main", this._n, "main")
       : `<div class="main strip" style="--n:${this._n}">${this._paint.map((c, i) =>
           `<i data-seg="${i}" class="${s.sel.has(i) ? "sel" : ""}" style="background:${c};box-shadow:${isDark(c) ? "none" : `0 0 18px ${c}aa`}"></i>`).join("")}</div>`;
     const tabs = { paint: "🎨 Paint", patterns: "▦ Patterns", effects: "✨ Effects" };
@@ -204,11 +196,11 @@ export class GlowStudioCard extends Base {
       <header>
         <div class="title"><span>${esc(this._cfg.title)}</span><small>${esc(on ? (lib.active?.name || "Custom") : "Off")}${fxActive && on ? " · effect" : ""}</small></div>
         ${fxActive && on ? `<button class="chip stop" data-act="stop">■ Stop</button>` : ""}
-        <button class="power ${on ? "on" : ""}" data-act="power" title="On / off">⏻</button>
+        <button class="power ${on ? "on" : ""}" data-act="power" title="On / off" aria-label="On / off"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M16.56 5.44l-1.45 1.45A5.97 5.97 0 0 1 18 12a6 6 0 0 1-12 0c0-2.17 1.16-4.06 2.88-5.12L7.44 5.44A7.96 7.96 0 0 0 4 12a8 8 0 0 0 16 0c0-2.72-1.36-5.12-3.44-6.56M13 3h-2v10h2"/></svg></button>
       </header>
       ${problem ? `<p class="warn">${esc(problem)}</p>` : ""}
       ${strip}
-      ${fxActive && on ? speedBar(fxActive, styleInfo(this._driver, ctx, fxActive.type), MINUTE_CHOICES) : ""}
+      ${fxActive && on && !editing ? speedBar(fxActive, styleInfo(this._driver, ctx, fxActive.hwType || fxActive.type)) : ""}
       <label class="bri"><span>☀</span><input type="range" min="1" max="100" value="${on ? bri : 0}" data-act="bri"><b>${on ? bri + "%" : "off"}</b></label>
       <nav>${Object.entries(tabs).map(([t, l]) => `<button class="${s.tab === t ? "act" : ""}" data-tab="${t}">${l}</button>`).join("")}</nav>
       <section>${body}</section></ha-card>`;
@@ -236,13 +228,10 @@ export class GlowStudioCard extends Base {
     q("[data-ed-seg]").forEach((b) => (b.onclick = () => { s.editing.segments = b.dataset.edSeg; s.editing.selected = [...s.sel]; this._render(); }));
     q("[data-ed-rm]").forEach((b) => (b.onclick = () => { s.editing.colors.splice(Number(b.dataset.edRm), 1); this._render(); }));
     q("[data-ed-add]").forEach((b) => (b.onclick = () => this._addColour(b.dataset.edAdd)));
-    q("[data-ed-min]").forEach((b) => (b.onclick = () => { s.editing.minutes = Number(b.dataset.edMin); this._render(); }));
-    q("[data-fx-min]").forEach((b) => (b.onclick = () => this._changeSpeed({ minutes: Number(b.dataset.fxMin) })));
-    q("[data-fx-slow]").forEach((b) => (b.onclick = () => this._makeSlow(Number(b.dataset.fxSlow))));
-    q("[data-ed-slow]").forEach((b) => (b.onclick = () => { s.editing = slowEquivalent(s.editing, Number(b.dataset.edSlow)); this._render(); }));
     q("[data-fx-speed]").forEach((el) => {
-      el.oninput = () => { const l = R.querySelector("[data-fx-speed-label]"); if (l) l.textContent = `${el.value}%`; };
-      el.onchange = () => this._changeSpeed({ speed: Number(el.value) });
+      const fx = () => { const lib = this._lib(); return lib.effects.find((e) => e.id === lib.active?.id); };
+      el.oninput = () => { const l = R.querySelector("[data-fx-speed-label]"); const f = fx(); if (l && f) l.textContent = speedLabel(applySlider(f, el.value)); };
+      el.onchange = () => this._changeSpeed(Number(el.value));
     });
     this._wireStrip();
     const ni = R.querySelector('[data-act="name-input"]');
@@ -320,6 +309,9 @@ export class GlowStudioCard extends Base {
 
   _setStyle(type) {
     const fx = this._s.editing; fx.type = type;
+    delete fx.hwType; delete fx.hwColors;
+    if (isDrift(type)) fx.minutes = fx.minutes || 30;
+    else { delete fx.minutes; fx.speed = fx.speed || 50; }
     const max = styleInfo(this._driver, this._ctx, type).colors;
     if (fx.colors.length > max) fx.colors = fx.colors.slice(0, max);
     this._render();
@@ -362,9 +354,9 @@ export class GlowStudioCard extends Base {
     const fx = this._s.editing;
     if (key === "name") fx.name = e.target.value;
     if (key === "speed") {
-      fx.speed = Number(e.target.value);
-      const lbl = this.shadowRoot.querySelector("[data-speed]"); if (lbl) lbl.textContent = `${fx.speed}%`;
-      if (e.type === "change") this._render();
+      const next = applySlider(fx, e.target.value);
+      const lbl = this.shadowRoot.querySelector("[data-speed]"); if (lbl) lbl.textContent = speedLabel(next);
+      if (e.type === "change") { this._s.editing = next; this._render(); }
     }
     if (key === "add" && e.type === "change") this._addColour(e.target.value);
   }
@@ -376,5 +368,7 @@ export class GlowStudioCard extends Base {
     else { fx.id = uid(); lib.effects.push(fx); }
     s.editing = null;
     await this._saveLib(lib);
+    // Editing the effect that's running? Show the change on the strip straight away.
+    if (lib.active?.kind === "effect" && lib.active.id === fx.id && this._light?.state === "on") await this._runEffect(fx, false);
   }
 }

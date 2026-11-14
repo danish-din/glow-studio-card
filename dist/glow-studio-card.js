@@ -203,7 +203,9 @@ nav button.act{background:rgba(255,255,255,.1);color:var(--ss-text);box-shadow:i
 .setup{text-align:center;padding:10px 4px;position:relative;z-index:1}.setup p{color:var(--ss-mute);margin:6px 0 14px}
 .warn{color:#ffb347;font-size:.85em;margin:8px 2px}
 .speedbar{margin:10px 2px 0}.row.speedbar{align-items:center;gap:6px}.row.speedbar .hint{margin:0 4px 0 0}
-.row.slower{align-items:center;gap:6px;margin:8px 0 0}.row.slower .hint{margin:0 2px 0 0}.row.slower .chip{padding:5px 10px;font-size:.8em}
+.editbanner{display:flex;flex-direction:column;gap:2px;padding:10px 12px;margin-bottom:6px;border-radius:12px;background:rgba(138,77,255,.16);box-shadow:inset 0 0 0 1px rgba(138,77,255,.45)}
+.editbanner span{font-size:.8em;color:var(--ss-mute)}
+.power{display:grid;place-items:center}
 `;
 
 // src/drivers/zigbee2mqtt.js
@@ -455,7 +457,6 @@ var DRIFT_STYLES = [
   { id: "drift", label: "Slow drift", colors: 8, minutes: true },
   { id: "drift_flow", label: "Slow flow", colors: 8, minutes: true }
 ];
-var MINUTE_CHOICES = [5, 15, 30, 60, 120];
 var isDrift = (type) => typeof type === "string" && type.startsWith("drift");
 var DRIFT_DEFAULTS = [
   ["Slow sunset", "drift", ["#ffb300", "#ff5500", "#c2185b", "#41006e"], 30],
@@ -473,6 +474,36 @@ function slowEquivalent(fx, minutes) {
   return { ...fx, type: travels ? "drift_flow" : "drift", colors: colors.slice(0, 8), minutes };
 }
 var driftMinutes = (fx) => Math.max(1, Math.min(240, Number(fx.minutes) || 30));
+var HW_FLOOR = 30;
+var MAX_MIN = 120;
+var LN_MAX = Math.log(MAX_MIN);
+var clampV = (v) => Math.max(1, Math.min(100, Math.round(Number(v) || 1)));
+var lowToMinutes = (v) => Math.max(1, Math.round(MAX_MIN ** ((HW_FLOOR - 1 - v) / (HW_FLOOR - 2))));
+var minutesToLow = (m) => Math.round(HW_FLOOR - 1 - (HW_FLOOR - 2) * Math.log(Math.max(1, m)) / LN_MAX);
+var fullToMinutes = (v) => Math.max(1, Math.round(MAX_MIN ** ((100 - v) / 99)));
+var minutesToFull = (m) => Math.round(100 - 99 * Math.log(Math.max(1, m)) / LN_MAX);
+var hwFromSlider = (v) => Math.max(1, Math.min(100, Math.round(1 + (v - HW_FLOOR) * 99 / (100 - HW_FLOOR))));
+var sliderFromHw = (s) => Math.round(HW_FLOOR + ((Number(s) || 50) - 1) * (100 - HW_FLOOR) / 99);
+function sliderFor(fx) {
+  if (!isDrift(fx.type)) return sliderFromHw(fx.speed);
+  return fx.hwType ? Math.min(HW_FLOOR - 1, Math.max(1, minutesToLow(driftMinutes(fx)))) : Math.max(1, minutesToFull(driftMinutes(fx)));
+}
+function applySlider(fx, v) {
+  v = clampV(v);
+  if (isDrift(fx.type) && !fx.hwType) return { ...fx, minutes: fullToMinutes(v) };
+  if (v >= HW_FLOOR) {
+    if (!isDrift(fx.type)) return { ...fx, speed: hwFromSlider(v) };
+    const { hwType, hwColors, minutes, ...rest } = fx;
+    return { ...rest, type: hwType, colors: hwColors || fx.colors, speed: hwFromSlider(v) };
+  }
+  if (isDrift(fx.type)) return { ...fx, minutes: lowToMinutes(v) };
+  return { ...slowEquivalent(fx, lowToMinutes(v)), hwType: fx.type, hwColors: fx.colors || [], speed: 1 };
+}
+function speedLabel(fx) {
+  if (!isDrift(fx.type)) return `${sliderFor(fx)}%`;
+  const m = driftMinutes(fx);
+  return `${sliderFor(fx)}% \xB7 ${m < 60 ? `${m} min` : `${Math.round(m / 60 * 10) / 10} h`} cycle`;
+}
 function driftVariables(driver, ctx, fx, segments) {
   const base = {
     driver: driver.id,
@@ -555,29 +586,23 @@ function effectEditor(s, driver, ctx, n) {
     <div class="swatches">${fx.colors.map((c, k) => `<span class="sw cur rm" style="background:${c}" data-ed-rm="${k}" title="Remove">\xD7</span>`).join("")}
       ${fx.colors.length < info.colors ? `<label class="sw custom" title="Add colour"><input type="color" value="#ff5500" data-ed="add"><span>\uFF0B</span></label>` : ""}</div>
     <div class="swatches small">${SWATCHES.slice(0, 13).map((c) => `<button class="sw" style="background:${c}" data-ed-add="${c}"></button>`).join("")}</div>` : `<p class="hint">This style uses the light's own colours.</p>`;
-  return `<div class="editor">${fxStripHtml(fx, "edit", n, "main")}
+  return `<div class="editor">
+    <div class="editbanner">\u270F\uFE0F Editing <b>${esc(fx.name || "new effect")}</b><span>Changes apply when you tap Save (or \u25B6 Try it).</span></div>
+    <h4>Preview</h4>${fxStripHtml(fx, "edit", n, "main")}
     <input class="namebox" value="${esc(fx.name)}" maxlength="28" placeholder="Effect name" data-ed="name">
-    <h4>Style</h4>${styleChooser(allStyles(driver, ctx), fx.type)}
+    <h4>Style</h4>${styleChooser(allStyles(driver, ctx), fx.hwType || fx.type)}
     ${colours}
-    ${info.minutes ? `<h4>One full cycle takes</h4><div class="row">${[5, 15, 30, 60, 120].map((m) => `<button class="chip ${driftMinutes(fx) === m ? "on" : ""}" data-ed-min="${m}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>
-      <p class="hint">Runs in Home Assistant, so it can change as slowly as you like.</p>` : ""}
-    ${info.speed ? `<h4>Speed <small data-speed>${fx.speed}%</small></h4><input type="range" min="1" max="100" value="${fx.speed}" data-ed="speed">
-      ${slowChips("data-ed-slow")}` : ""}
+    ${info.speed || isDrift(fx.type) ? `<h4>Speed <small data-speed>${speedLabel(fx)}</small></h4>
+      <input type="range" min="1" max="100" value="${sliderFor(fx)}" data-ed="speed">
+      <p class="hint">Below 30% is slower than the strip can go: Home Assistant takes over, down to a 2-hour cycle.</p>` : ""}
     ${info.segments ? `<h4>Segments</h4><div class="row">${Object.entries(SEG_SETS).map(([k, v]) => `<button class="chip ${fx.segments === k ? "on" : ""}" data-ed-seg="${k}">${v}</button>`).join("")}</div>
       ${fx.segments === "selected" ? `<p class="hint">Uses the segments selected in Paint (${(fx.selected || []).length}).</p>` : ""}` : ""}
     <div class="row end"><button class="chip" data-act="ed-cancel">Cancel</button>
       <button class="chip" data-act="ed-try">\u25B6 Try it</button><button class="chip pri" data-act="ed-save">Save</button></div></div>`;
 }
-function speedBar(fx, info, minuteChoices) {
-  if (info.minutes) {
-    return `<div class="row speedbar"><span class="hint">Cycle</span>${minuteChoices.map((m) => `<button class="chip ${driftMinutes(fx) === m ? "on" : ""}" data-fx-min="${m}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>`;
-  }
-  if (!info.speed) return "";
-  return `<label class="bri speedbar"><span title="Effect speed">\u23F1</span><input type="range" min="1" max="100" value="${Number(fx.speed) || 50}" data-fx-speed><b data-fx-speed-label>${Number(fx.speed) || 50}%</b></label>
-    ${slowChips("data-fx-slow", minuteChoices)}`;
-}
-function slowChips(attr, choices = [5, 15, 30, 60, 120]) {
-  return `<div class="row slower"><span class="hint">Slower:</span>${choices.map((m) => `<button class="chip" ${attr}="${m}" title="Change over ${m < 60 ? `${m} minutes` : `${m / 60} hour${m > 60 ? "s" : ""}`}">${m < 60 ? `${m} min` : `${m / 60} h`}</button>`).join("")}</div>`;
+function speedBar(fx, info) {
+  if (!info.speed && !isDrift(fx.type)) return "";
+  return `<label class="bri speedbar"><span title="Effect speed">\u23F1</span><input type="range" min="1" max="100" value="${sliderFor(fx)}" data-fx-speed><b data-fx-speed-label>${speedLabel(fx)}</b></label>`;
 }
 
 // src/card.js
@@ -742,26 +767,16 @@ var GlowStudioCard = class extends Base {
       await this._hass.callService("script", "turn_off", { entity_id: this._cfg.drift_script });
     }
   }
-  /** Quick speed change for the running effect (hardware speed, or cycle minutes for slow effects). */
-  async _changeSpeed(patch) {
-    const lib = this._lib();
-    const fx = lib.effects.find((e) => e.id === lib.active?.id);
-    if (!fx) return;
-    Object.assign(fx, patch);
-    await this._guard(async () => {
-      if (isDrift(fx.type)) await this._runEffect(fx, false);
-      else await this._driver.setSpeed(this._ctx, fx);
-      await this._saveLib(lib);
-    });
-  }
-  /** Running hardware effect → its slow version (same name/colours), saved and restarted via the drift script. */
-  async _makeSlow(minutes) {
+  /** Speed slider moved for the running effect: strip speed above 30%, slow (Home Assistant) mode below. */
+  async _changeSpeed(v) {
     const lib = this._lib();
     const i = lib.effects.findIndex((e) => e.id === lib.active?.id);
     if (i < 0) return;
-    lib.effects[i] = slowEquivalent(lib.effects[i], minutes);
+    const before = lib.effects[i], after = applySlider(before, v);
+    lib.effects[i] = after;
     await this._guard(async () => {
-      await this._runEffect(lib.effects[i], false);
+      if (isDrift(after.type) || isDrift(before.type) !== isDrift(after.type)) await this._runEffect(after, false);
+      else await this._driver.setSpeed(this._ctx, after);
       if (!this._error) await this._saveLib(lib);
     });
   }
@@ -813,7 +828,8 @@ var GlowStudioCard = class extends Base {
     const on = this._light.state === "on", s = this._s, ctx = this._ctx;
     const bri = Math.round((this._light.attributes?.brightness || 0) / 2.55);
     const fxActive = lib.active?.kind === "effect" ? lib.effects.find((e) => e.id === lib.active.id) : null;
-    const strip = fxActive && on && s.tab !== "paint" ? fxStripHtml(fxActive, "main", this._n, "main") : `<div class="main strip" style="--n:${this._n}">${this._paint.map((c, i) => `<i data-seg="${i}" class="${s.sel.has(i) ? "sel" : ""}" style="background:${c};box-shadow:${isDark(c) ? "none" : `0 0 18px ${c}aa`}"></i>`).join("")}</div>`;
+    const editing = s.tab === "effects" && s.editing;
+    const strip = editing ? "" : fxActive && on && s.tab !== "paint" ? fxStripHtml(fxActive, "main", this._n, "main") : `<div class="main strip" style="--n:${this._n}">${this._paint.map((c, i) => `<i data-seg="${i}" class="${s.sel.has(i) ? "sel" : ""}" style="background:${c};box-shadow:${isDark(c) ? "none" : `0 0 18px ${c}aa`}"></i>`).join("")}</div>`;
     const tabs = { paint: "\u{1F3A8} Paint", patterns: "\u25A6 Patterns", effects: "\u2728 Effects" };
     const body = s.tab === "paint" ? paintTab(s) : s.tab === "patterns" ? patternsTab(s, lib) : effectsTab(s, lib, this._driver, ctx, this._n);
     const problem = this._error || this._driver.problem(ctx);
@@ -821,11 +837,11 @@ var GlowStudioCard = class extends Base {
       <header>
         <div class="title"><span>${esc(this._cfg.title)}</span><small>${esc(on ? lib.active?.name || "Custom" : "Off")}${fxActive && on ? " \xB7 effect" : ""}</small></div>
         ${fxActive && on ? `<button class="chip stop" data-act="stop">\u25A0 Stop</button>` : ""}
-        <button class="power ${on ? "on" : ""}" data-act="power" title="On / off">\u23FB</button>
+        <button class="power ${on ? "on" : ""}" data-act="power" title="On / off" aria-label="On / off"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M16.56 5.44l-1.45 1.45A5.97 5.97 0 0 1 18 12a6 6 0 0 1-12 0c0-2.17 1.16-4.06 2.88-5.12L7.44 5.44A7.96 7.96 0 0 0 4 12a8 8 0 0 0 16 0c0-2.72-1.36-5.12-3.44-6.56M13 3h-2v10h2"/></svg></button>
       </header>
       ${problem ? `<p class="warn">${esc(problem)}</p>` : ""}
       ${strip}
-      ${fxActive && on ? speedBar(fxActive, styleInfo(this._driver, ctx, fxActive.type), MINUTE_CHOICES) : ""}
+      ${fxActive && on && !editing ? speedBar(fxActive, styleInfo(this._driver, ctx, fxActive.hwType || fxActive.type)) : ""}
       <label class="bri"><span>\u2600</span><input type="range" min="1" max="100" value="${on ? bri : 0}" data-act="bri"><b>${on ? bri + "%" : "off"}</b></label>
       <nav>${Object.entries(tabs).map(([t, l]) => `<button class="${s.tab === t ? "act" : ""}" data-tab="${t}">${l}</button>`).join("")}</nav>
       <section>${body}</section></ha-card>`;
@@ -877,22 +893,17 @@ var GlowStudioCard = class extends Base {
       this._render();
     });
     q("[data-ed-add]").forEach((b) => b.onclick = () => this._addColour(b.dataset.edAdd));
-    q("[data-ed-min]").forEach((b) => b.onclick = () => {
-      s.editing.minutes = Number(b.dataset.edMin);
-      this._render();
-    });
-    q("[data-fx-min]").forEach((b) => b.onclick = () => this._changeSpeed({ minutes: Number(b.dataset.fxMin) }));
-    q("[data-fx-slow]").forEach((b) => b.onclick = () => this._makeSlow(Number(b.dataset.fxSlow)));
-    q("[data-ed-slow]").forEach((b) => b.onclick = () => {
-      s.editing = slowEquivalent(s.editing, Number(b.dataset.edSlow));
-      this._render();
-    });
     q("[data-fx-speed]").forEach((el) => {
+      const fx = () => {
+        const lib = this._lib();
+        return lib.effects.find((e) => e.id === lib.active?.id);
+      };
       el.oninput = () => {
         const l = R.querySelector("[data-fx-speed-label]");
-        if (l) l.textContent = `${el.value}%`;
+        const f = fx();
+        if (l && f) l.textContent = speedLabel(applySlider(f, el.value));
       };
-      el.onchange = () => this._changeSpeed({ speed: Number(el.value) });
+      el.onchange = () => this._changeSpeed(Number(el.value));
     });
     this._wireStrip();
     const ni = R.querySelector('[data-act="name-input"]');
@@ -1037,6 +1048,13 @@ var GlowStudioCard = class extends Base {
   _setStyle(type) {
     const fx = this._s.editing;
     fx.type = type;
+    delete fx.hwType;
+    delete fx.hwColors;
+    if (isDrift(type)) fx.minutes = fx.minutes || 30;
+    else {
+      delete fx.minutes;
+      fx.speed = fx.speed || 50;
+    }
     const max = styleInfo(this._driver, this._ctx, type).colors;
     if (fx.colors.length > max) fx.colors = fx.colors.slice(0, max);
     this._render();
@@ -1110,10 +1128,13 @@ var GlowStudioCard = class extends Base {
     const fx = this._s.editing;
     if (key === "name") fx.name = e.target.value;
     if (key === "speed") {
-      fx.speed = Number(e.target.value);
+      const next = applySlider(fx, e.target.value);
       const lbl = this.shadowRoot.querySelector("[data-speed]");
-      if (lbl) lbl.textContent = `${fx.speed}%`;
-      if (e.type === "change") this._render();
+      if (lbl) lbl.textContent = speedLabel(next);
+      if (e.type === "change") {
+        this._s.editing = next;
+        this._render();
+      }
     }
     if (key === "add" && e.type === "change") this._addColour(e.target.value);
   }
@@ -1127,6 +1148,7 @@ var GlowStudioCard = class extends Base {
     }
     s.editing = null;
     await this._saveLib(lib);
+    if (lib.active?.kind === "effect" && lib.active.id === fx.id && this._light?.state === "on") await this._runEffect(fx, false);
   }
 };
 

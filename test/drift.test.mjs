@@ -57,15 +57,6 @@ test("preview animates drift slowly as a cross-fade or a flow", () => {
   assert.equal(previewKind("drift_flow"), "chasing");
 });
 
-test("speed bar: slider for hardware effects, minute chips for slow ones, nothing without speed", () => {
-  assert.match(speedBar({ speed: 20 }, { speed: true, minutes: false }, [5, 30]), /value="20" data-fx-speed/);
-  const chips = speedBar({ minutes: 30 }, { minutes: true }, [5, 30, 120]);
-  assert.match(chips, /data-fx-min="30"/);
-  assert.match(chips, /chip on" data-fx-min="30"/);
-  assert.match(chips, /2 h/);
-  assert.equal(speedBar({}, { speed: false, minutes: false }, [5]), "");
-});
-
 test("speed control setSpeed sends only the speed", async () => {
   const sent = [];
   const ctx = { ...ctxFor({ wled_topic: "wled/d" }), mqtt: async (topic, obj) => sent.push({ topic, obj }) };
@@ -126,20 +117,6 @@ test("hardware effects and painting stop a running drift first", async () => {
   assert.equal(calls[0].service, "turn_off");
 });
 
-test("quick speed change: hardware sends effect_speed and saves; slow re-runs with new minutes", async () => {
-  let { c, calls, lib } = mkCard({ scriptState: "off" });
-  lib.active = { kind: "effect", id: "e0", name: "Woodfire" };
-  await c._changeSpeed({ speed: 5 });
-  assert.ok(calls.some((x) => x.data?.payload === JSON.stringify({ effect_speed: 5 })));
-  const saved = JSON.parse(calls.at(-1).data.payload);
-  assert.equal(saved.effects.find((e) => e.id === "e0").speed, 5);
-  ({ c, calls, lib } = mkCard({ scriptState: "on" }));
-  lib.active = { kind: "effect", id: "d0", name: "Slow sunset" };
-  await c._changeSpeed({ minutes: 120 });
-  assert.equal(calls.find((x) => x.service === "turn_on" && x.domain === "script").data.variables.minutes, 120);
-  assert.equal(JSON.parse(calls.at(-1).data.payload).effects.find((e) => e.id === "d0").minutes, 120);
-});
-
 test("setup adds the slow starters to the library", async () => {
   const { c, calls } = mkCard();
   c._hass.states = { ...c._hass.states }; delete c._hass.states["sensor.glow_studio_strip"];
@@ -161,27 +138,68 @@ test("slowEquivalent: travelling styles flow, others drift; keeps id, name and c
   assert.deepEqual(slowEquivalent({ type: "drift_flow", minutes: 5 }, 120), { type: "drift_flow", minutes: 120 });
 });
 
-test("speed bar and editor offer 'Slower' minutes for hardware effects", () => {
-  const html = speedBar({ speed: 1 }, { speed: true, minutes: false }, [5, 30]);
-  assert.match(html, /Slower:/);
-  assert.match(html, /data-fx-slow="30"/);
+
+test("one slider: 30-100% is the strip's own speed, below 30% hands over to slow mode", async () => {
+  const { applySlider, sliderFor, speedLabel, HW_FLOOR } = await import("../src/drift.js");
+  const candle = { id: "e1", name: "Candlelight", type: "flicker", colors: ["#ff8c1a", "#ffb04d"], speed: 50 };
+  assert.equal(HW_FLOOR, 30);
+  assert.equal(applySlider(candle, 30).speed, 1, "30% = the strip's slowest");
+  assert.equal(applySlider(candle, 100).speed, 100);
+  const slow = applySlider(candle, 10);
+  assert.deepEqual([slow.type, slow.hwType, slow.name, slow.id], ["drift", "flicker", "Candlelight", "e1"]);
+  assert.ok(slow.minutes > 20 && slow.minutes < 35);
+  assert.equal(applySlider(candle, 1).minutes, 120);
+  assert.equal(applySlider(candle, 29).minutes, 1);
+  const back = applySlider(slow, 60);
+  assert.deepEqual([back.type, back.colors, "hwType" in back, "minutes" in back], ["flicker", candle.colors, false, false]);
+  for (const v of [1, 10, 29, 30, 64, 100]) assert.equal(sliderFor(applySlider(candle, v)), v, `round-trips at ${v}`);
+  const native = { type: "drift", colors: ["#ff0000", "#0000ff"], minutes: 30 };
+  assert.equal(applySlider(native, 100).minutes, 1);
+  assert.equal(applySlider(native, 1).minutes, 120);
+  assert.equal(applySlider(native, 100).type, "drift", "slow-only effects stay slow");
+  assert.match(speedLabel(slow), /% · \d+ min cycle/);
+  assert.equal(speedLabel(candle), `${sliderFor(candle)}%`);
 });
 
-test("making a running effect slow converts and saves it, then starts the drift script", async () => {
-  const { c, calls, lib } = mkCard({ scriptState: "off" });
+test("speed bar is one slider (no minute buttons) and hides for lights without speed", () => {
+  const html = speedBar({ type: "flicker", speed: 1 }, { speed: true });
+  assert.match(html, /value="30" data-fx-speed/);
+  assert.doesNotMatch(html, /min<\/button>|data-fx-min|Slower/);
+  assert.match(speedBar({ type: "drift", minutes: 30 }, { speed: false }), /data-fx-speed/);
+  assert.equal(speedBar({ type: "Wave" }, { speed: false }), "");
+});
+
+test("moving the live slider: strip speed above 30%, slow script below, back again restores", async () => {
+  let { c, calls, lib } = mkCard({ scriptState: "off" });
   lib.active = { kind: "effect", id: "e1", name: "Candlelight" };
-  await c._makeSlow(30);
+  await c._changeSpeed(65);
+  assert.ok(calls.some((x) => /"effect_speed":\d+/.test(x.data?.payload || "")));
+  calls.length = 0;
+  await c._changeSpeed(10);
   const run = calls.find((x) => x.domain === "script" && x.service === "turn_on");
-  assert.equal(run.data.variables.minutes, 30);
-  assert.deepEqual(run.data.variables.colors, ["#ff8c1a", "#ffb04d", "#ff7a00"]);
+  assert.ok(run.data.variables.minutes > 20);
   const saved = JSON.parse(calls.at(-1).data.payload).effects.find((e) => e.id === "e1");
-  assert.deepEqual([saved.name, saved.type, saved.minutes], ["Candlelight", "drift", 30]);
+  assert.deepEqual([saved.type, saved.hwType], ["drift", "flicker"]);
+  c._hass.states["sensor.glow_studio_strip"].attributes = JSON.parse(calls.at(-1).data.payload);
+  c._hass.states["script.glow_studio_drift"].state = "on";
+  calls.length = 0;
+  await c._changeSpeed(80);
+  assert.ok(calls.some((x) => x.domain === "script" && x.service === "turn_off"), "slow mode stopped");
+  assert.ok(calls.some((x) => JSON.parse(x.data?.payload || "{}").effect === "flicker"), "hardware effect restarted");
 });
 
-test("without the drift script, making slow reports it and leaves the library alone", async () => {
+test("without the drift script, going below 30% reports it and leaves the library alone", async () => {
   const { c, calls, lib } = mkCard();
   lib.active = { kind: "effect", id: "e1", name: "Candlelight" };
-  await c._makeSlow(30);
+  await c._changeSpeed(10);
   assert.match(c._error, /drift script/);
   assert.ok(!calls.some((x) => x.data?.topic?.endsWith("/library")));
+});
+
+test("saving the running effect applies it to the strip straight away", async () => {
+  const { c, calls, lib } = mkCard({ scriptState: "off" });
+  lib.active = { kind: "effect", id: "d0", name: "Slow sunset" };
+  c._s.editing = { ...lib.effects.find((e) => e.id === "d0"), minutes: 90 };
+  await c._saveEffect();
+  assert.equal(calls.find((x) => x.domain === "script" && x.service === "turn_on").data.variables.minutes, 90);
 });

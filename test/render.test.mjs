@@ -159,7 +159,7 @@ test("effect editor: create, edit colours/style/speed/segments, save; duplicate 
   await tick(30);
   const mine = el._lib().effects.at(-1);
   assert.deepEqual({ name: mine.name, type: mine.type, speed: mine.speed, segments: mine.segments, colors: mine.colors },
-    { name: "Mine", type: "breathing", speed: 80, segments: "odd", colors: ["#ff9500", "#2040ff"] });
+    { name: "Mine", type: "breathing", speed: 72, segments: "odd", colors: ["#ff9500", "#2040ff"] });
   const count = el._lib().effects.length;
   $(`[data-menu="${mine.id}"]`).click();
   $(`[data-fx-act="dup"][data-id="${mine.id}"]`).click();
@@ -230,4 +230,18 @@ test("drivers with long effect lists get a dropdown in the editor", async () => 
   sel.value = "Effect 7"; sel.dispatchEvent(new Event("change"));
   assert.equal(el._s.editing.type, "Effect 7");
   assert.ok(el._s.editing.colors.length <= 3, "WLED takes up to 3 colours");
+});
+
+test("editing hides the live strip/speed bar and says changes apply on Save", async () => {
+  const lib = defaultLibrary(10, aqaraT1.defaultEffects());
+  lib.active = { kind: "effect", id: "e0", name: "Woodfire" };
+  const { $, el } = mount({ lib });
+  $('[data-tab="effects"]').click();
+  assert.ok($("[data-fx-speed]"), "live speed bar visible while not editing");
+  $('[data-menu="e0"]').click();
+  $('[data-fx-act="edit"][data-id="e0"]').click();
+  assert.equal($("[data-fx-speed]"), null, "live speed bar hidden while editing");
+  assert.match($(".editbanner").textContent, /Editing Woodfire.*Save/s);
+  assert.equal(el.shadowRoot.querySelectorAll(".main.strip").length, 1, "only the preview strip shows");
+  assert.ok($(".power svg"), "power button is an icon, not a font glyph");
 });
