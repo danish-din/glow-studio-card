@@ -1,5 +1,6 @@
 // CSS approximation of hardware effects, for tile previews and the live strip. Works from any brand's effect name.
 import { RAINBOW } from "./defaults.js";
+import { hex } from "./sanitize.js";
 
 /** Map a driver effect id/name onto one of a handful of preview animations. */
 export function previewKind(type = "", name = "") {
@@ -28,9 +29,10 @@ export function fallbackPalette(kind, s) {
 export function fxCss(fx, scope) {
   const kind = previewKind(fx.type, fx.name);
   const s = `${fx.type} ${fx.name}`.toLowerCase();
-  const cols = fx.colors?.length ? fx.colors : fallbackPalette(kind, s);
+  const cols = (fx.colors?.length ? fx.colors : fallbackPalette(kind, s)).map((c) => hex(c));
   // Slow (drift) effects take minutes on the strip; the preview just shows them noticeably slower.
-  const dur = String(fx.type).startsWith("drift") ? 4 : 0.5 + ((100 - (Number(fx.speed) || 50)) / 100) * 5;
+  const speed = Math.max(1, Math.min(100, Number(fx.speed) || 50));
+  const dur = String(fx.type).startsWith("drift") ? 4 : 0.5 + ((100 - speed) / 100) * 5;
   const d = (x) => x.toFixed(2);
   const name = `fx_${String(scope).replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const stops = cols.map((c, k) => `${Math.round((k / cols.length) * 100)}%{background:${c};box-shadow:0 0 14px ${c}}`).join("")

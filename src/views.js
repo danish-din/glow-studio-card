@@ -1,5 +1,6 @@
 // HTML builders for the card's tabs. Pure functions of (card state, library, driver) → markup.
 import { esc, isDark } from "./helpers.js";
+import { hex } from "./sanitize.js";
 import { SWATCHES, SEG_SETS } from "./defaults.js";
 import { fxStripHtml } from "./preview.js";
 import { styleInfo, allStyles } from "./drivers/index.js";
@@ -14,7 +15,7 @@ const menu = (attr, id, items) => `<div class="menu">${items.map(([a, l]) =>
 export function paintTab(s) {
   const naming = s.naming?.kind === "pattern-new";
   return `<div class="swatches">${SWATCHES.map((c) => `<button class="sw ${c === s.color ? "cur" : ""}" data-color="${c}" style="background:${c}" title="${c === "#000000" ? "Off" : c}">${c === "#000000" ? "⊘" : ""}</button>`).join("")}
-      <label class="sw custom" title="Any colour"><input type="color" value="${s.color}" data-act="pick"><span style="background:${s.color}"></span></label></div>
+      <label class="sw custom" title="Any colour"><input type="color" value="${hex(s.color)}" data-act="pick"><span style="background:${hex(s.color)}"></span></label></div>
     <p class="hint">Tap or drag across the strip to paint. ${s.sel.size ? `${s.sel.size} selected.` : "Long-press a segment to select it."}</p>
     <div class="row">
       <button class="chip ${s.mirror ? "on" : ""}" data-act="mirror">⇋ Mirror</button>
@@ -30,7 +31,7 @@ export function patternsTab(s, lib) {
   const tiles = lib.patterns.map((p) => `
     <div class="tile ${lib.active?.kind === "pattern" && lib.active.id === p.id ? "act" : ""}">
       <button class="hit" data-apply-pattern="${esc(p.id)}">
-        <div class="mini strip" style="--n:${p.colors.length}">${p.colors.map((c) => `<i style="background:${c};box-shadow:${isDark(c) ? "none" : `0 0 8px ${c}`}"></i>`).join("")}</div>
+        <div class="mini strip" style="--n:${Number(p.colors.length) || 1}">${p.colors.map((c) => `<i style="background:${hex(c)};box-shadow:${isDark(c) ? "none" : `0 0 8px ${hex(c)}`}"></i>`).join("")}</div>
         ${ren === p.id ? "" : `<span>${esc(p.name)}</span>`}</button>
       ${ren === p.id ? `<div class="row name"><input value="${esc(p.name)}" maxlength="28" data-act="name-input"><button class="chip pri" data-act="name-save">OK</button></div>` : ""}
       <button class="dots" data-menu="${esc(p.id)}">⋯</button>
@@ -63,7 +64,7 @@ export function effectEditor(s, driver, ctx, n) {
   const info = styleInfo(driver, ctx, fx.type);
   const colours = info.colors > 0 ? `
     <h4>Colours <small>${fx.colors.length}/${info.colors}</small></h4>
-    <div class="swatches">${fx.colors.map((c, k) => `<span class="sw cur rm" style="background:${c}" data-ed-rm="${k}" title="Remove">×</span>`).join("")}
+    <div class="swatches">${fx.colors.map((c, k) => `<span class="sw cur rm" style="background:${hex(c)}" data-ed-rm="${k}" title="Remove">×</span>`).join("")}
       ${fx.colors.length < info.colors ? `<label class="sw custom" title="Add colour"><input type="color" value="#ff5500" data-ed="add"><span>＋</span></label>` : ""}</div>
     <div class="swatches small">${SWATCHES.slice(0, 13).map((c) => `<button class="sw" style="background:${c}" data-ed-add="${c}"></button>`).join("")}</div>`
     : `<p class="hint">This style uses the light's own colours.</p>`;
@@ -73,7 +74,7 @@ export function effectEditor(s, driver, ctx, n) {
     <input class="namebox" value="${esc(fx.name)}" maxlength="28" placeholder="Effect name" data-ed="name">
     <h4>Style</h4>${styleChooser(allStyles(driver, ctx), fx.hwType || fx.type)}
     ${colours}
-    ${info.speed || isDrift(fx.type) ? `<h4>Speed <small data-speed>${speedLabel(fx)}</small></h4>
+    ${info.speed || isDrift(fx.type) ? `<h4>Speed <small data-speed>${esc(speedLabel(fx))}</small></h4>
       <input type="range" min="1" max="100" value="${sliderFor(fx)}" data-ed="speed">
       <p class="hint">Below 30% is slower than the strip can go: Home Assistant takes over, down to a 2-hour cycle.</p>` : ""}
     ${info.segments ? `<h4>Segments</h4><div class="row">${Object.entries(SEG_SETS).map(([k, v]) => `<button class="chip ${fx.segments === k ? "on" : ""}" data-ed-seg="${k}">${v}</button>`).join("")}</div>
@@ -85,5 +86,5 @@ export function effectEditor(s, driver, ctx, n) {
 /** Quick speed control shown under the strip while an effect runs (one slider; below 30% = slow mode). */
 export function speedBar(fx, info) {
   if (!info.speed && !isDrift(fx.type)) return "";
-  return `<label class="bri speedbar"><span title="Effect speed">⏱</span><input type="range" min="1" max="100" value="${sliderFor(fx)}" data-fx-speed><b data-fx-speed-label>${speedLabel(fx)}</b></label>`;
+  return `<label class="bri speedbar"><span title="Effect speed">⏱</span><input type="range" min="1" max="100" value="${sliderFor(fx)}" data-fx-speed><b data-fx-speed-label>${esc(speedLabel(fx))}</b></label>`;
 }

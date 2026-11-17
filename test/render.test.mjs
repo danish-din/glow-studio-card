@@ -245,3 +245,22 @@ test("editing hides the live strip/speed bar and says changes apply on Save", as
   assert.equal(el.shadowRoot.querySelectorAll(".main.strip").length, 1, "only the preview strip shows");
   assert.ok($(".power svg"), "power button is an icon, not a font glyph");
 });
+
+test("a poisoned library topic can't inject markup into the card", () => {
+  const evil = `red"><img src=x onerror="window.pwned2=1">`;
+  const lib = fullLib();
+  lib.patterns[0].colors = [evil, ...lib.patterns[0].colors.slice(1)];
+  lib.effects[0].colors = [evil];
+  lib.effects[0].speed = evil;
+  lib.current = Array(10).fill(evil);
+  lib.active = { kind: "effect", id: lib.effects[0].id, name: evil };
+  const { $, $$, el } = mount({ lib });
+  for (const tab of ["paint", "patterns", "effects"]) {
+    $(`[data-tab="${tab}"]`).click();
+    assert.equal(el.shadowRoot.querySelectorAll("img").length, 0, tab);
+  }
+  $(`[data-menu="${lib.effects[0].id}"]`).click();
+  $(`[data-fx-act="edit"][data-id="${lib.effects[0].id}"]`).click();
+  assert.equal(el.shadowRoot.querySelectorAll("img").length, 0, "editor");
+  assert.equal(window.pwned2, undefined);
+});

@@ -53,8 +53,12 @@ each device's published API and covered by tests, but not yet confirmed on real 
 
 ### HACS (recommended)
 
-1. HACS → ⋮ → **Custom repositories** → add `https://github.com/danish-din/glow-studio-card`, type **Dashboard**.
-2. Search for **Glow Studio**, install, and reload your browser.
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=danish-din&repository=glow-studio-card&category=plugin)
+
+1. Open **HACS** and search for **Glow Studio**.
+2. Install it, then reload your browser.
+
+Not showing up yet? Add it as a custom repository: HACS → ⋮ → **Custom repositories** → `https://github.com/danish-din/glow-studio-card`, type **Dashboard**, then search again.
 
 ### Manual
 

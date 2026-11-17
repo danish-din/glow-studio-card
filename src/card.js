@@ -4,6 +4,7 @@ import { esc, mix, isDark, uid, slugify, scaleColors } from "./helpers.js";
 import { defaultLibrary } from "./defaults.js";
 import { fxStripHtml } from "./preview.js";
 import { STYLES } from "./styles.js";
+import { sanitizeLibrary, hex } from "./sanitize.js";
 import { pickDriver, styleInfo, allStyles } from "./drivers/index.js";
 import { DRIFT_SCRIPT, DRIFT_DEFAULTS, isDrift, driftVariables, applySlider, speedLabel } from "./drift.js";
 import { paintTab, patternsTab, effectsTab, speedBar } from "./views.js";
@@ -64,9 +65,8 @@ export class GlowStudioCard extends Base {
 
   /* ---------- library (retained MQTT topic ⇄ MQTT sensor attributes) ---------- */
   _lib() {
-    const a = this._hass?.states[this._cfg.library_entity]?.attributes;
-    if (!a || !Array.isArray(a.patterns)) return null;
-    return { version: a.version || 1, patterns: a.patterns, effects: a.effects || [], active: a.active || null, current: a.current || null };
+    // Untrusted: anyone who can publish to the retained topic controls these values.
+    return sanitizeLibrary(this._hass?.states[this._cfg.library_entity]?.attributes);
   }
   _saveLib(lib) {
     lib.version = (lib.version || 1) + 1;
@@ -195,7 +195,7 @@ export class GlowStudioCard extends Base {
     const editing = s.tab === "effects" && s.editing;
     const strip = editing ? "" : fxActive && on && s.tab !== "paint" ? fxStripHtml(fxActive, "main", this._n, "main")
       : `<div class="main strip" style="--n:${this._n}">${this._paint.map((c, i) =>
-          `<i data-seg="${i}" class="${s.sel.has(i) ? "sel" : ""}" style="background:${c};box-shadow:${isDark(c) ? "none" : `0 0 18px ${c}aa`}"></i>`).join("")}</div>`;
+          `<i data-seg="${i}" class="${s.sel.has(i) ? "sel" : ""}" style="background:${hex(c)};box-shadow:${isDark(c) ? "none" : `0 0 18px ${hex(c)}aa`}"></i>`).join("")}</div>`;
     const tabs = { paint: "🎨 Paint", patterns: "▦ Patterns", effects: "✨ Effects" };
     const body = s.tab === "paint" ? paintTab(s) : s.tab === "patterns" ? patternsTab(s, lib) : effectsTab(s, lib, this._driver, ctx, this._n);
     const problem = this._error || this._driver.problem(ctx);

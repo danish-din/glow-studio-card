@@ -70,6 +70,49 @@ var defaultLibrary = (segments, effects = []) => ({
   current: scaleColors(DEFAULT_PATTERNS[2][1], segments)
 });
 
+// src/sanitize.js
+var HEX = /^#[0-9a-f]{6}$/i;
+var hex = (c, fallback = "#000000") => typeof c === "string" && HEX.test(c) ? c.toLowerCase() : fallback;
+var str = (v, max) => typeof v === "string" || typeof v === "number" ? String(v).slice(0, max) : "";
+var num = (v, min, max, dflt) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : dflt;
+};
+var colourList = (list2, max) => Array.isArray(list2) ? list2.filter((c) => typeof c === "string" && HEX.test(c)).slice(0, max).map((c) => c.toLowerCase()) : [];
+var paintList = (list2) => Array.isArray(list2) ? list2.slice(0, 500).map((c) => hex(c)) : null;
+function effect(e) {
+  if (!e || typeof e !== "object") return null;
+  const out = {
+    id: str(e.id, 40),
+    name: str(e.name, 60),
+    type: str(e.type, 60),
+    colors: colourList(e.colors, 8),
+    speed: num(e.speed, 1, 100, 50),
+    segments: Object.prototype.hasOwnProperty.call(SEG_SETS, e.segments) ? e.segments : "all"
+  };
+  if (!out.id || !out.type) return null;
+  if (e.minutes !== void 0) out.minutes = num(e.minutes, 1, 240, 30);
+  if (Array.isArray(e.selected)) out.selected = e.selected.map(Number).filter((i) => Number.isInteger(i) && i >= 0 && i < 500).slice(0, 500);
+  if (e.hwType !== void 0) out.hwType = str(e.hwType, 60);
+  if (e.hwColors !== void 0) out.hwColors = colourList(e.hwColors, 8);
+  return out;
+}
+function pattern(p) {
+  if (!p || typeof p !== "object" || !str(p.id, 40)) return null;
+  return { id: str(p.id, 40), name: str(p.name, 60), colors: paintList(p.colors) || [] };
+}
+function sanitizeLibrary(a) {
+  if (!a || !Array.isArray(a.patterns)) return null;
+  const active = a.active && typeof a.active === "object" && ["pattern", "effect"].includes(a.active.kind) ? { kind: a.active.kind, id: a.active.id == null ? null : str(a.active.id, 40), name: str(a.active.name, 60) } : null;
+  return {
+    version: Math.floor(num(a.version, 1, Number.MAX_SAFE_INTEGER, 1)),
+    patterns: a.patterns.map(pattern).filter(Boolean),
+    effects: (Array.isArray(a.effects) ? a.effects : []).map(effect).filter(Boolean),
+    active,
+    current: paintList(a.current)
+  };
+}
+
 // src/preview.js
 function previewKind(type = "", name = "") {
   const s = `${type} ${name}`.toLowerCase();
@@ -94,8 +137,9 @@ function fallbackPalette(kind, s) {
 function fxCss(fx, scope) {
   const kind = previewKind(fx.type, fx.name);
   const s = `${fx.type} ${fx.name}`.toLowerCase();
-  const cols = fx.colors?.length ? fx.colors : fallbackPalette(kind, s);
-  const dur = String(fx.type).startsWith("drift") ? 4 : 0.5 + (100 - (Number(fx.speed) || 50)) / 100 * 5;
+  const cols = (fx.colors?.length ? fx.colors : fallbackPalette(kind, s)).map((c) => hex(c));
+  const speed = Math.max(1, Math.min(100, Number(fx.speed) || 50));
+  const dur = String(fx.type).startsWith("drift") ? 4 : 0.5 + (100 - speed) / 100 * 5;
   const d = (x) => x.toFixed(2);
   const name = `fx_${String(scope).replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const stops = cols.map((c, k) => `${Math.round(k / cols.length * 100)}%{background:${c};box-shadow:0 0 14px ${c}}`).join("") + `100%{background:${cols[0]};box-shadow:0 0 14px ${cols[0]}}`;
@@ -540,7 +584,7 @@ var menu = (attr, id, items) => `<div class="menu">${items.map(([a, l]) => `<but
 function paintTab(s) {
   const naming = s.naming?.kind === "pattern-new";
   return `<div class="swatches">${SWATCHES.map((c) => `<button class="sw ${c === s.color ? "cur" : ""}" data-color="${c}" style="background:${c}" title="${c === "#000000" ? "Off" : c}">${c === "#000000" ? "\u2298" : ""}</button>`).join("")}
-      <label class="sw custom" title="Any colour"><input type="color" value="${s.color}" data-act="pick"><span style="background:${s.color}"></span></label></div>
+      <label class="sw custom" title="Any colour"><input type="color" value="${hex(s.color)}" data-act="pick"><span style="background:${hex(s.color)}"></span></label></div>
     <p class="hint">Tap or drag across the strip to paint. ${s.sel.size ? `${s.sel.size} selected.` : "Long-press a segment to select it."}</p>
     <div class="row">
       <button class="chip ${s.mirror ? "on" : ""}" data-act="mirror">\u21CB Mirror</button>
@@ -554,7 +598,7 @@ function patternsTab(s, lib) {
   const tiles = lib.patterns.map((p) => `
     <div class="tile ${lib.active?.kind === "pattern" && lib.active.id === p.id ? "act" : ""}">
       <button class="hit" data-apply-pattern="${esc(p.id)}">
-        <div class="mini strip" style="--n:${p.colors.length}">${p.colors.map((c) => `<i style="background:${c};box-shadow:${isDark(c) ? "none" : `0 0 8px ${c}`}"></i>`).join("")}</div>
+        <div class="mini strip" style="--n:${Number(p.colors.length) || 1}">${p.colors.map((c) => `<i style="background:${hex(c)};box-shadow:${isDark(c) ? "none" : `0 0 8px ${hex(c)}`}"></i>`).join("")}</div>
         ${ren === p.id ? "" : `<span>${esc(p.name)}</span>`}</button>
       ${ren === p.id ? `<div class="row name"><input value="${esc(p.name)}" maxlength="28" data-act="name-input"><button class="chip pri" data-act="name-save">OK</button></div>` : ""}
       <button class="dots" data-menu="${esc(p.id)}">\u22EF</button>
@@ -583,7 +627,7 @@ function effectEditor(s, driver, ctx, n) {
   const info = styleInfo(driver, ctx, fx.type);
   const colours = info.colors > 0 ? `
     <h4>Colours <small>${fx.colors.length}/${info.colors}</small></h4>
-    <div class="swatches">${fx.colors.map((c, k) => `<span class="sw cur rm" style="background:${c}" data-ed-rm="${k}" title="Remove">\xD7</span>`).join("")}
+    <div class="swatches">${fx.colors.map((c, k) => `<span class="sw cur rm" style="background:${hex(c)}" data-ed-rm="${k}" title="Remove">\xD7</span>`).join("")}
       ${fx.colors.length < info.colors ? `<label class="sw custom" title="Add colour"><input type="color" value="#ff5500" data-ed="add"><span>\uFF0B</span></label>` : ""}</div>
     <div class="swatches small">${SWATCHES.slice(0, 13).map((c) => `<button class="sw" style="background:${c}" data-ed-add="${c}"></button>`).join("")}</div>` : `<p class="hint">This style uses the light's own colours.</p>`;
   return `<div class="editor">
@@ -592,7 +636,7 @@ function effectEditor(s, driver, ctx, n) {
     <input class="namebox" value="${esc(fx.name)}" maxlength="28" placeholder="Effect name" data-ed="name">
     <h4>Style</h4>${styleChooser(allStyles(driver, ctx), fx.hwType || fx.type)}
     ${colours}
-    ${info.speed || isDrift(fx.type) ? `<h4>Speed <small data-speed>${speedLabel(fx)}</small></h4>
+    ${info.speed || isDrift(fx.type) ? `<h4>Speed <small data-speed>${esc(speedLabel(fx))}</small></h4>
       <input type="range" min="1" max="100" value="${sliderFor(fx)}" data-ed="speed">
       <p class="hint">Below 30% is slower than the strip can go: Home Assistant takes over, down to a 2-hour cycle.</p>` : ""}
     ${info.segments ? `<h4>Segments</h4><div class="row">${Object.entries(SEG_SETS).map(([k, v]) => `<button class="chip ${fx.segments === k ? "on" : ""}" data-ed-seg="${k}">${v}</button>`).join("")}</div>
@@ -602,7 +646,7 @@ function effectEditor(s, driver, ctx, n) {
 }
 function speedBar(fx, info) {
   if (!info.speed && !isDrift(fx.type)) return "";
-  return `<label class="bri speedbar"><span title="Effect speed">\u23F1</span><input type="range" min="1" max="100" value="${sliderFor(fx)}" data-fx-speed><b data-fx-speed-label>${speedLabel(fx)}</b></label>`;
+  return `<label class="bri speedbar"><span title="Effect speed">\u23F1</span><input type="range" min="1" max="100" value="${sliderFor(fx)}" data-fx-speed><b data-fx-speed-label>${esc(speedLabel(fx))}</b></label>`;
 }
 
 // src/card.js
@@ -685,9 +729,7 @@ var GlowStudioCard = class extends Base {
   }
   /* ---------- library (retained MQTT topic ⇄ MQTT sensor attributes) ---------- */
   _lib() {
-    const a = this._hass?.states[this._cfg.library_entity]?.attributes;
-    if (!a || !Array.isArray(a.patterns)) return null;
-    return { version: a.version || 1, patterns: a.patterns, effects: a.effects || [], active: a.active || null, current: a.current || null };
+    return sanitizeLibrary(this._hass?.states[this._cfg.library_entity]?.attributes);
   }
   _saveLib(lib) {
     lib.version = (lib.version || 1) + 1;
@@ -836,7 +878,7 @@ var GlowStudioCard = class extends Base {
     const bri = Math.round((this._light.attributes?.brightness || 0) / 2.55);
     const fxActive = lib.active?.kind === "effect" ? lib.effects.find((e) => e.id === lib.active.id) : null;
     const editing = s.tab === "effects" && s.editing;
-    const strip = editing ? "" : fxActive && on && s.tab !== "paint" ? fxStripHtml(fxActive, "main", this._n, "main") : `<div class="main strip" style="--n:${this._n}">${this._paint.map((c, i) => `<i data-seg="${i}" class="${s.sel.has(i) ? "sel" : ""}" style="background:${c};box-shadow:${isDark(c) ? "none" : `0 0 18px ${c}aa`}"></i>`).join("")}</div>`;
+    const strip = editing ? "" : fxActive && on && s.tab !== "paint" ? fxStripHtml(fxActive, "main", this._n, "main") : `<div class="main strip" style="--n:${this._n}">${this._paint.map((c, i) => `<i data-seg="${i}" class="${s.sel.has(i) ? "sel" : ""}" style="background:${hex(c)};box-shadow:${isDark(c) ? "none" : `0 0 18px ${hex(c)}aa`}"></i>`).join("")}</div>`;
     const tabs = { paint: "\u{1F3A8} Paint", patterns: "\u25A6 Patterns", effects: "\u2728 Effects" };
     const body = s.tab === "paint" ? paintTab(s) : s.tab === "patterns" ? patternsTab(s, lib) : effectsTab(s, lib, this._driver, ctx, this._n);
     const problem = this._error || this._driver.problem(ctx);
@@ -1219,7 +1261,7 @@ var GlowStudioCardEditor = class extends Base2 {
 };
 
 // src/index.js
-var VERSION = "2.1.0";
+var VERSION = "2.2.0";
 if (!customElements.get("glow-studio-card")) customElements.define("glow-studio-card", GlowStudioCard);
 if (!customElements.get("glow-studio-card-editor")) customElements.define("glow-studio-card-editor", GlowStudioCardEditor);
 window.customCards = window.customCards || [];
